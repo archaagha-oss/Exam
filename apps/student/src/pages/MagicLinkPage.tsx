@@ -10,15 +10,22 @@ export default function MagicLinkPage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
-  const [status, setStatus] = useState<'checking' | 'blocked' | 'expired' | 'used' | 'error'>('checking');
+  const [status, setStatus] = useState<'checking' | 'blocked' | 'expired' | 'used' | 'error'>(
+    'checking'
+  );
   const [detail, setDetail] = useState('');
 
   useEffect(() => {
-    if (!token) { setStatus('error'); return; }
+    if (!token) {
+      setStatus('error');
+      return;
+    }
 
     // Call the security endpoint to validate the token
-    fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1'}/security/join/${token}`)
-      .then(async res => {
+    fetch(
+      `${import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api/v1'}/security/join/${token}`
+    )
+      .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {
           if (res.status === 410) {
@@ -40,20 +47,20 @@ export default function MagicLinkPage() {
         // We do this by generating a short-lived session token server-side
         // For now: store student identity and redirect to exam
         // In production: exchange the preAuthToken for a real JWT
-        setAuth({
-          accessToken: data.data.preAuthToken,
-          user: {
-            id: student.id,
-            name: student.name,
-            email: student.email,
-            role: 'STUDENT',
-          },
+        setAuth(data.data.preAuthToken, {
+          id: student.id,
+          name: student.name,
+          email: student.email,
+          role: 'STUDENT',
+          schoolId: null,
         });
 
         // Start session for this exam
         navigate(`/?autoStart=${examId}`, { replace: true });
       })
-      .catch(() => { setStatus('error'); });
+      .catch(() => {
+        setStatus('error');
+      });
   }, [token]);
 
   const states = {
@@ -68,7 +75,7 @@ export default function MagicLinkPage() {
       title: 'Access denied — network restriction',
       text: detail || 'You are not connecting from an allowed network for this exam.',
       color: 'text-red-400',
-      sub: 'Please connect to your institution\'s network (or VPN if permitted) and try again.',
+      sub: "Please connect to your institution's network (or VPN if permitted) and try again.",
     },
     expired: {
       icon: '⏰',
@@ -101,9 +108,7 @@ export default function MagicLinkPage() {
         <div className="text-6xl mb-5">{s.icon}</div>
         <h1 className={`text-xl font-bold mb-3 ${s.color}`}>{s.title}</h1>
         <p className="text-sm text-gray-400 mb-3 leading-relaxed">{s.text}</p>
-        {'sub' in s && s.sub && (
-          <p className="text-xs text-gray-600 leading-relaxed">{s.sub}</p>
-        )}
+        {'sub' in s && s.sub && <p className="text-xs text-gray-600 leading-relaxed">{s.sub}</p>}
         {status === 'checking' && (
           <div className="mt-6 flex justify-center">
             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
