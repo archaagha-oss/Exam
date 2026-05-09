@@ -4,6 +4,10 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { requestId } from './middleware/requestId';
+import { logger } from './lib/logger';
+import { registry, httpRequestDuration } from './lib/metrics';
+import prisma from './lib/prisma';
 
 import authRouter from './modules/auth/auth.router';
 import usersRouter from './modules/users/users.router';
@@ -86,8 +90,43 @@ app.use(rateLimit({ windowMs: 60_000, max: 300, message: { error: 'Too many requ
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(requestId);
 
+// HTTP request duration metric
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+  res.on('finish', () => {
+    const route = (req.route?.path as string | undefined) ?? req.path;
+    end({ method: req.method, route, status: String(res.statusCode) });
+  });
+  next();
+});
+
+// ── Health endpoints ────────────────────────────────────
+// Liveness: process is up. Used by k8s liveness probe.
+app.get('/health/live', (_req, res) => res.json({ status: 'ok' }));
+
+// Readiness: process can serve traffic (DB + Redis reachable).
+app.get('/health/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    // Redis check is best-effort; a degraded redis shouldn't fail readiness
+    // (refresh tokens fall back to in-memory; OTP rate-limit will still work)
+    res.json({ status: 'ready' });
+  } catch (e: any) {
+    logger.error({ err: e?.message }, 'readiness check failed');
+    res.status(503).json({ status: 'unready', reason: 'database' });
+  }
+});
+
+// Backward-compat /health
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
+// Prometheus metrics
+app.get('/metrics', async (_req, res) => {
+  res.setHeader('Content-Type', registry.contentType);
+  res.send(await registry.metrics());
+});
 
 const api = express.Router();
 api.use('/auth', authRouter);
@@ -131,8 +170,10 @@ app.use(
   ) => {
     const status = typeof err.status === 'number' ? err.status : 500;
     if (status >= 500) {
-      // eslint-disable-next-line no-console
-      console.error('[error]', err.stack || err.message || err);
+      logger.error(
+        { err: err.stack || err.message, requestId: (_req as express.Request).id },
+        'unhandled error'
+      );
     }
     const safeMessage =
       status < 500
