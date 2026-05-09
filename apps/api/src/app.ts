@@ -32,6 +32,7 @@ import assessmentRouter from './modules/analytics/assessment.router';
 import senRouter from './modules/sen/sen.router';
 import securityRouter from './modules/security/security.router';
 import superadminRouter from './modules/superadmin/superadmin.router';
+import integrityRouter from './modules/integrity/integrity.router';
 
 const app = express();
 
@@ -152,6 +153,7 @@ api.use('/assessment', assessmentRouter);
 api.use('/sen', senRouter);
 api.use('/security', securityRouter);
 api.use('/platform', superadminRouter);
+api.use('/integrity', integrityRouter);
 
 app.use('/api/v1', api);
 
