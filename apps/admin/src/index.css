@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body { @apply bg-gray-950 text-gray-100 font-sans antialiased; }
+}
+
+@layer components {
+  .btn        { @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn bg-emerald-500 hover:bg-emerald-400 text-black px-4 py-2 text-sm; }
+  .btn-secondary { @apply btn bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 text-sm; }
+  .btn-danger  { @apply btn bg-red-600 hover:bg-red-500 text-white px-4 py-2 text-sm; }
+  .btn-ghost   { @apply btn border border-gray-700 hover:border-gray-500 text-gray-300 px-4 py-2 text-sm; }
+  .card        { @apply bg-gray-900 border border-gray-800 rounded-xl; }
+  .input       { @apply bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent placeholder:text-gray-500 w-full; }
+  .label       { @apply block text-xs font-medium text-gray-400 mb-1.5; }
+  .badge       { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium; }
+  .badge-draft    { @apply badge bg-gray-800 text-gray-400; }
+  .badge-published { @apply badge bg-blue-950 text-blue-300; }
+  .badge-active   { @apply badge bg-emerald-950 text-emerald-400; }
+  .badge-closed   { @apply badge bg-gray-800 text-gray-500; }
+}

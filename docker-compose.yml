@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: secureexam
+      POSTGRES_USER: secureexam
+      POSTGRES_PASSWORD: changeme_in_production
+    ports: ['5432:5432']
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U secureexam']
+      interval: 5s; timeout: 5s; retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ['6379:6379']
+    volumes: [redisdata:/data]
+
+  api:
+    build: { context: ., dockerfile: docker/Dockerfile.api }
+    restart: unless-stopped
+    ports: ['4000:4000']
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://secureexam:changeme_in_production@postgres:5432/secureexam
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-jwt-secret-change-in-production-32chars
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-production-32c
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:5175
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: npm run dev --workspace=apps/api
+
+volumes:
+  pgdata:
+  redisdata:

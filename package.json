@@ -1,0 +1,21 @@
+{
+  "name": "secureexam",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/student\" \"npm run dev --workspace=apps/teacher\" \"npm run dev --workspace=apps/admin\"",
+    "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/student && npm run build --workspace=apps/teacher && npm run build --workspace=apps/admin",
+    "db:migrate": "npm run db:migrate --workspace=apps/api",
+    "db:seed": "npm run db:seed --workspace=apps/api",
+    "db:studio": "npm run db:studio --workspace=apps/api",
+    "migrate:tenant": "cd apps/api && npx ts-node -r tsconfig-paths/register scripts/migrate-tenant.ts",
+    "migrate:cleanup": "cd apps/api && npx ts-node -r tsconfig-paths/register scripts/migrate-tenant-cleanup.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

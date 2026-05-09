@@ -1,0 +1,524 @@
+// apps/api/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+  SUPER_ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role
+  schoolId     String?
+  school       School?  @relation(fields: [schoolId], references: [id])
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacherExams    Exam[]         @relation("TeacherExams")
+  studentSessions ExamSession[]  @relation("StudentSessions")
+  classStudents   ClassStudent[]
+  classTeachers   ClassTeacher[]
+  createdPins     ExamPin[]      @relation("PinCreator")
+  examProctors    ExamProctor[]  @relation("ProctorAssignee")
+  sentInvites     ExamProctor[]  @relation("ProctorInviter")
+  auditLogs       AuditLog[]
+  feedbackGiven   SessionFeedback[] @relation("FeedbackAuthor")
+  senProfile      StudentAccessArrangement? @relation("StudentSEN")
+  senConfigured   StudentAccessArrangement[] @relation("SENCOConfig")
+  examInvites     ExamInvite[] @relation("StudentInvites")
+
+  @@map("users")
+}
+
+model School {
+  id        String   @id @default(uuid())
+  name      String
+  domain    String?  @unique
+  createdAt DateTime @default(now())
+
+  // Branding
+  logoUrl      String?
+  primaryColour String?   @default("#10b981")
+  address      String?
+  contactEmail String?
+  website      String?
+
+  // Exam policy defaults (applied when teacher creates new exam)
+  defaultDurationMinutes Int      @default(60)
+  defaultMaxViolations   Int      @default(3)
+  defaultPassingScore    Int?
+  defaultShowResults     Boolean  @default(true)
+  allowEssayQuestions    Boolean  @default(true)
+  requireLockdown        Boolean  @default(true)
+
+  // Compliance
+  gdprDpoName    String?
+  gdprDpoEmail   String?
+  dataRegion     String?   @default("UK")
+
+  // Login tracking
+  lastActivityAt DateTime?
+
+  users   User[]
+  classes Class[]
+  exams   Exam[]
+
+  @@map("schools")
+}
+
+model Class {
+  id       String @id @default(uuid())
+  name     String
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+
+  students ClassStudent[]
+  teachers ClassTeacher[]
+  exams    ExamAssignment[]
+
+  @@map("classes")
+}
+
+model ClassStudent {
+  classId   String
+  studentId String
+  class     Class  @relation(fields: [classId], references: [id])
+  student   User   @relation(fields: [studentId], references: [id])
+
+  @@id([classId, studentId])
+  @@map("class_students")
+}
+
+model ClassTeacher {
+  classId   String
+  teacherId String
+  class     Class  @relation(fields: [classId], references: [id])
+  teacher   User   @relation(fields: [teacherId], references: [id])
+
+  @@id([classId, teacherId])
+  @@map("class_teachers")
+}
+
+enum QuestionType {
+  MCQ
+  MCQ_MULTI
+  TRUE_FALSE
+  SHORT_TEXT
+  ESSAY
+}
+
+model Question {
+  id         String       @id @default(uuid())
+  createdBy  String
+  schoolId   String
+  type       QuestionType
+  body       String
+  mediaUrl   String?
+  options    Json?
+  correctIds Json?
+  rubric     String?
+  points     Float        @default(1)
+  difficulty Int          @default(2)
+  tags       String[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  examItems ExamItem[]
+
+  @@map("questions")
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+model Exam {
+  id               String     @id @default(uuid())
+  title            String
+  description      String?
+  schoolId         String
+  school           School     @relation(fields: [schoolId], references: [id])
+  teacherId        String
+  teacher          User       @relation("TeacherExams", fields: [teacherId], references: [id])
+  status           ExamStatus @default(DRAFT)
+  durationMinutes  Int        @default(60)
+  maxViolations    Int        @default(3)
+  shuffleQuestions Boolean    @default(false)
+  shuffleOptions   Boolean    @default(false)
+  showResultsAfter Boolean    @default(true)
+  passingScore     Float?
+  instructions     String?
+  startsAt         DateTime?
+  endsAt           DateTime?
+  // Calculator: null=none, "basic"=basic, "scientific"=scientific
+  calculatorType   String?
+
+  // Security level: 1=basic, 2=medium (magic link+IP), 3=high (magic link+IP+OTP)
+  securityLevel    Int      @default(1)
+  // IP allowlist: comma-separated CIDRs e.g. "192.168.1.0/24,10.0.0.0/8"
+  ipAllowlist      String?
+  // Require OTP verification before exam starts (level 3)
+  requireOtp       Boolean  @default(false)
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  items       ExamItem[]
+  assignments ExamAssignment[]
+  sessions    ExamSession[]
+  pins        ExamPin[]
+  proctors    ExamProctor[]
+  sections    ExamSection[]
+  pools       ExamPool[]
+  invites     ExamInvite[]
+
+  @@map("exams")
+}
+
+model ExamItem {
+  id            String       @id @default(uuid())
+  examId        String
+  exam          Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      Question     @relation(fields: [questionId], references: [id])
+  sectionId     String?
+  section       ExamSection? @relation(fields: [sectionId], references: [id])
+  order         Int
+  points        Float?
+  // Scoring model: "binary" (all-or-nothing), "partial" (proportional), "negative" (penalty for wrong)
+  scoringMode   String       @default("binary")
+  negativeMarks Float        @default(0)  // points deducted per wrong answer (0 = off)
+  bonusPoints   Float        @default(0)  // extra points for correct answer
+
+  @@map("exam_items")
+}
+
+model ExamAssignment {
+  id         String   @id @default(uuid())
+  examId     String
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  classId    String
+  class      Class    @relation(fields: [classId], references: [id])
+  assignedAt DateTime @default(now())
+
+  @@unique([examId, classId])
+  @@map("exam_assignments")
+}
+
+// ── PHASE 3: CO-PROCTORS ───────────────────────────────────
+
+model ExamProctor {
+  id        String   @id @default(uuid())
+  examId    String
+  exam      Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  teacherId String
+  teacher   User     @relation("ProctorAssignee", fields: [teacherId], references: [id])
+  invitedBy String
+  inviter   User     @relation("ProctorInviter", fields: [invitedBy], references: [id])
+  invitedAt DateTime @default(now())
+
+  @@unique([examId, teacherId])
+  @@map("exam_proctors")
+}
+
+enum SessionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  LOCKED
+  SUBMITTED
+  AUTO_SUBMITTED
+}
+
+model ExamSession {
+  id             String        @id @default(uuid())
+  examId         String
+  exam           Exam          @relation(fields: [examId], references: [id])
+  studentId      String
+  student        User          @relation("StudentSessions", fields: [studentId], references: [id])
+  status         SessionStatus @default(NOT_STARTED)
+  startedAt      DateTime?
+  submittedAt    DateTime?
+  score          Float?
+  totalPoints    Float?
+  violationCount Int           @default(0)
+  questionOrder  Json?
+  optionOrders   Json?
+  ipAddress      String?
+  userAgent      String?
+  deviceFingerprint String?  // hash of browser/device characteristics
+  otpVerifiedAt DateTime?   // when OTP was verified (null = not yet)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  answers    StudentAnswer[]
+  violations Violation[]
+  feedback    SessionFeedback?
+  certificate ExamCertificate?
+  restBreaks  RestBreakLog[]
+  otp         ExamOtp?
+  deviceAlerts DeviceAlert[]
+
+  @@unique([examId, studentId])
+  @@map("exam_sessions")
+}
+
+model StudentAnswer {
+  id               String      @id @default(uuid())
+  sessionId        String
+  session          ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionId       String
+  selectedIds      Json?
+  textAnswer       String?
+  isCorrect        Boolean?
+  points           Float?
+  timeSpentSeconds Int?        // seconds student spent on this question
+  answeredAt       DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@unique([sessionId, questionId])
+  @@map("student_answers")
+}
+
+enum ViolationType {
+  TAB_SWITCH
+  FULLSCREEN_EXIT
+  RIGHT_CLICK
+  KEYBOARD_SHORTCUT
+  COPY_PASTE
+  FOCUS_LOST
+  MANUAL_FLAG
+}
+
+model Violation {
+  id          String        @id @default(uuid())
+  sessionId   String
+  session     ExamSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type        ViolationType
+  description String?
+  occurredAt  DateTime      @default(now())
+
+  @@map("violations")
+}
+
+enum PinPurpose {
+  UNLOCK
+  EXIT
+}
+
+model ExamPin {
+  id        String     @id @default(uuid())
+  examId    String
+  exam      Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
+  purpose   PinPurpose
+  pinHash   String
+  createdBy String
+  creator   User       @relation("PinCreator", fields: [createdBy], references: [id])
+  createdAt DateTime   @default(now())
+  expiresAt DateTime?
+  usedAt    DateTime?
+  usedBy    String?
+
+  @@unique([examId, purpose])
+  @@map("exam_pins")
+}
+
+// ── PHASE 3: AUDIT LOG ─────────────────────────────────────
+
+enum AuditAction {
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  USER_DEACTIVATED
+  EXAM_PUBLISHED
+  EXAM_CLOSED
+  EXAM_ARCHIVED
+  SESSION_FORCE_SUBMITTED
+  SESSION_REMOTE_UNLOCKED
+  SESSION_FLAGGED
+  PROCTOR_INVITED
+  PROCTOR_REMOVED
+  PIN_GENERATED
+  BULK_IMPORT
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  actorId    String
+  actor      User        @relation(fields: [actorId], references: [id])
+  action     AuditAction
+  targetType String      // e.g. "User", "Exam", "ExamSession"
+  targetId   String
+  meta       Json?       // extra context (old values, new values, etc.)
+  createdAt  DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ── PHASE 4C: SECTIONS & QUESTION POOLS ──────────────────
+
+model ExamSection {
+  id              String   @id @default(uuid())
+  examId          String
+  exam            Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  title           String
+  instructions    String?
+  order           Int
+  durationMinutes Int?     // null = uses exam-level timer
+  pointsAvailable Float?   // computed from pool or items
+
+  items ExamItem[]
+  pools ExamPool[]
+
+  @@map("exam_sections")
+}
+
+model ExamPool {
+  id          String       @id @default(uuid())
+  examId      String
+  exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  sectionId   String?
+  section     ExamSection? @relation(fields: [sectionId], references: [id])
+  title       String
+  drawCount   Int          // how many questions to randomly draw
+  tags        String[]     // draw from questions matching these tags
+  difficulty  Int?         // optional: only draw from this difficulty
+  type        String?      // optional: only draw from this question type
+  order       Int
+
+  @@map("exam_pools")
+}
+
+// ── ASSESSMENT TOOLS: FEEDBACK & CERTIFICATES ──────────────
+
+model SessionFeedback {
+  id          String      @id @default(uuid())
+  sessionId   String      @unique
+  session     ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User        @relation("FeedbackAuthor", fields: [authorId], references: [id])
+  text        String      // teacher-written feedback
+  aiSuggested String?     // AI-generated remediation advice
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("session_feedback")
+}
+
+model ExamCertificate {
+  id          String      @id @default(uuid())
+  sessionId   String      @unique
+  session     ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentName String
+  examTitle   String
+  score       Float
+  totalPoints Float
+  percentage  Int
+  issuedAt    DateTime    @default(now())
+  pdfUrl      String?
+
+  @@map("exam_certificates")
+}
+
+// ── SEN ACCESS ARRANGEMENTS ────────────────────────────────
+
+model StudentAccessArrangement {
+  id               String   @id @default(uuid())
+  studentId        String   @unique
+  student          User     @relation("StudentSEN", fields: [studentId], references: [id], onDelete: Cascade)
+  configuredById   String
+  configuredBy     User     @relation("SENCOConfig", fields: [configuredById], references: [id])
+  // Extra time: percentage added to exam duration (0 = none, 25 = standard JCQ, 50 = enhanced)
+  extraTimePercent Int      @default(0)
+  // Text-to-speech read aloud
+  textToSpeech     Boolean  @default(false)
+  // Font size override in px (null = use student's own preference)
+  fontSizeOverride Int?
+  // Rest breaks: student may pause the timer (auditable, PIN required)
+  restBreaksAllowed Boolean @default(false)
+  restBreakMinutes Int      @default(0)   // total break minutes allowed per exam
+  // Focus mode: one question at a time, no navigation bar visible
+  focusMode        Boolean  @default(false)
+  // High contrast forced on
+  highContrastForced Boolean @default(false)
+  // Notes for invigilator / SENCO reference (not shown to student)
+  notes            String?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  @@map("student_access_arrangements")
+}
+
+model RestBreakLog {
+  id         String      @id @default(uuid())
+  sessionId  String
+  session    ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  startedAt  DateTime    @default(now())
+  resumedAt  DateTime?
+  durationSeconds Int?
+
+  @@map("rest_break_logs")
+}
+
+// ── SECURITY: MAGIC LINKS & OTP ────────────────────────────
+
+model ExamInvite {
+  id          String    @id @default(uuid())
+  examId      String
+  exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User      @relation("StudentInvites", fields: [studentId], references: [id])
+  token       String    @unique  // cryptographically secure random token
+  usedAt      DateTime?           // null = unused, set when student opens link
+  expiresAt   DateTime            // set by teacher, e.g. exam window close
+  createdAt   DateTime  @default(now())
+
+  @@unique([examId, studentId])
+  @@map("exam_invites")
+}
+
+model ExamOtp {
+  id         String    @id @default(uuid())
+  sessionId  String    @unique
+  session    ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  code       String    // 6-digit code (hashed)
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("exam_otps")
+}
+
+model DeviceAlert {
+  id          String      @id @default(uuid())
+  sessionId   String
+  session     ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  alertType   String      // NEW_DEVICE, LOCATION_CHANGE, FINGERPRINT_MISMATCH
+  details     Json?
+  createdAt   DateTime    @default(now())
+
+  @@map("device_alerts")
+}
+

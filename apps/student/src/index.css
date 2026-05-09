@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    @apply bg-gray-950 text-gray-100 font-sans antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-emerald-500 hover:bg-emerald-400 text-black px-5 py-2.5 text-sm;
+  }
+  .btn-danger {
+    @apply btn bg-red-500 hover:bg-red-400 text-white px-5 py-2.5 text-sm;
+  }
+  .btn-ghost {
+    @apply btn border border-gray-700 hover:border-gray-500 text-gray-300 px-5 py-2.5 text-sm;
+  }
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl;
+  }
+  .input {
+    @apply bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100
+           focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent
+           placeholder:text-gray-500;
+  }
+}
+
+/* Accessibility: high contrast mode */
+.high-contrast {
+  filter: contrast(1.5);
+}
+.high-contrast .card {
+  @apply border-2 border-white/40;
+}
+.high-contrast button:focus,
+.high-contrast input:focus,
+.high-contrast textarea:focus,
+.high-contrast a:focus {
+  @apply outline-2 outline-yellow-400 outline-offset-2;
+}
+
+/* Accessibility: focus visible for keyboard navigation */
+:focus-visible {
+  @apply outline-2 outline-blue-400 outline-offset-2 rounded;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
