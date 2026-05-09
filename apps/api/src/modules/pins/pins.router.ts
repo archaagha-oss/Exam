@@ -18,25 +18,46 @@ router.post('/generate', async (req: Request, res: Response) => {
     deliverTo: z.string().email().optional(), // if set, email the PINs
   });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: 'Invalid input' }); return; }
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid input' });
+    return;
+  }
 
   const allowed = await canManageExam(req.user.sub, req.user.role, parsed.data.examId);
-  if (!allowed) { res.status(403).json({ error: 'Only the exam owner can generate PINs' }); return; }
+  if (!allowed) {
+    res.status(403).json({ error: 'Only the exam owner can generate PINs' });
+    return;
+  }
 
   const exam = await prisma.exam.findUnique({
     where: { id: parsed.data.examId },
     select: { title: true },
   });
-  if (!exam) { res.status(404).json({ error: 'Exam not found' }); return; }
+  if (!exam) {
+    res.status(404).json({ error: 'Exam not found' });
+    return;
+  }
 
   const results: Record<string, string> = {};
   for (const purpose of parsed.data.purposes) {
     const pin = crypto.randomInt(1000, 9999).toString();
-    const pinHash = await bcrypt.hash(pin, 10);
+    const pinHash = await bcrypt.hash(pin, 12);
     await prisma.examPin.upsert({
       where: { examId_purpose: { examId: parsed.data.examId, purpose } },
-      create: { examId: parsed.data.examId, purpose, pinHash, createdBy: req.user.sub, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) },
-      update: { pinHash, createdBy: req.user.sub, usedAt: null, usedBy: null, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+      create: {
+        examId: parsed.data.examId,
+        purpose,
+        pinHash,
+        createdBy: req.user.sub,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+      update: {
+        pinHash,
+        createdBy: req.user.sub,
+        usedAt: null,
+        usedBy: null,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
     });
     results[purpose] = pin;
   }

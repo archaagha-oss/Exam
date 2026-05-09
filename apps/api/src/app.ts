@@ -1,5 +1,6 @@
 // apps/api/src/app.ts
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -31,44 +32,56 @@ import superadminRouter from './modules/superadmin/superadmin.router';
 const app = express();
 
 app.use(helmet());
-app.use(cors({
-  origin: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:5175').split(','),
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: (
+      process.env.CORS_ORIGINS ||
+      'http://localhost:5173,http://localhost:5174,http://localhost:5175'
+    ).split(','),
+    credentials: true,
+  })
+);
 
-app.use('/api/v1/auth', rateLimit({ windowMs: 60_000, max: 20, message: { error: 'Too many requests' } }));
-app.use('/api/v1/ai', rateLimit({ windowMs: 60_000, max: 10, message: { error: 'AI rate limit' } }));
+app.use(
+  '/api/v1/auth',
+  rateLimit({ windowMs: 60_000, max: 20, message: { error: 'Too many requests' } })
+);
+app.use(
+  '/api/v1/ai',
+  rateLimit({ windowMs: 60_000, max: 10, message: { error: 'AI rate limit' } })
+);
 app.use(rateLimit({ windowMs: 60_000, max: 300, message: { error: 'Too many requests' } }));
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 const api = express.Router();
-api.use('/auth',           authRouter);
-api.use('/users',          usersRouter);
-api.use('/schools',        schoolsRouter);
-api.use('/questions',      questionsRouter);
-api.use('/exams',          examsRouter);
+api.use('/auth', authRouter);
+api.use('/users', usersRouter);
+api.use('/schools', schoolsRouter);
+api.use('/questions', questionsRouter);
+api.use('/exams', examsRouter);
 api.use('/exams/:examId/sections', sectionsRouter);
-api.use('/sessions',       sessionsRouter);
-api.use('/reports',        reportsRouter);
-api.use('/pins',           pinsRouter);
-api.use('/proctors',       proctorsRouter);
-api.use('/admin',          adminRouter);
-api.use('/audit',          auditRouter);
-api.use('/exports',        exportsRouter);
-api.use('/grading',        gradingRouter);
-api.use('/ai',             aiRouter);
-api.use('/media',          mediaRouter);
-api.use('/student',        studentResultsRouter);
-api.use('/analytics',      analyticsRouter);
-api.use('/qti',            qtiRouter);
-api.use('/assessment',     assessmentRouter);
-api.use('/sen',            senRouter);
-api.use('/security',       securityRouter);
-api.use('/platform',       superadminRouter);
+api.use('/sessions', sessionsRouter);
+api.use('/reports', reportsRouter);
+api.use('/pins', pinsRouter);
+api.use('/proctors', proctorsRouter);
+api.use('/admin', adminRouter);
+api.use('/audit', auditRouter);
+api.use('/exports', exportsRouter);
+api.use('/grading', gradingRouter);
+api.use('/ai', aiRouter);
+api.use('/media', mediaRouter);
+api.use('/student', studentResultsRouter);
+api.use('/analytics', analyticsRouter);
+api.use('/qti', qtiRouter);
+api.use('/assessment', assessmentRouter);
+api.use('/sen', senRouter);
+api.use('/security', securityRouter);
+api.use('/platform', superadminRouter);
 
 app.use('/api/v1', api);
 

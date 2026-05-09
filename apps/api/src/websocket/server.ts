@@ -19,27 +19,61 @@ export const sessionClients = new Map<string, AuthenticatedClient>();
 // examId → Set of proctor websockets
 export const proctorRooms = new Map<string, Set<WebSocket>>();
 
-const STALE_THRESHOLD_MS = 45_000;  // 45s without heartbeat = stale
-const HEARTBEAT_CHECK_MS = 15_000;  // check every 15s
+const STALE_THRESHOLD_MS = 45_000; // 45s without heartbeat = stale
+const HEARTBEAT_CHECK_MS = 15_000; // check every 15s
 
 export function setupWebSocket(server: http.Server) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    // Accept the "bearer.<jwt>" subprotocol so clients can send the token
+    // in a header instead of the URL query string (which gets logged).
+    handleProtocols: (protocols) => {
+      for (const p of protocols) {
+        if (p.startsWith('bearer.')) return p;
+      }
+      // No bearer subprotocol — accept any other protocol the client offered
+      // (or none) so legacy ?token= clients still work.
+      return false;
+    },
+  });
 
   wss.on('connection', async (ws, req) => {
     const url = new URL(req.url!, `http://${req.headers.host}`);
-    const token    = url.searchParams.get('token');
     const sessionId = url.searchParams.get('sessionId') ?? undefined;
-    const examId    = url.searchParams.get('examId')    ?? undefined;
+    const examId = url.searchParams.get('examId') ?? undefined;
 
-    if (!token) { ws.close(4001, 'Missing token'); return; }
+    // Token auth: prefer Sec-WebSocket-Protocol subprotocol header
+    // (NOT logged by proxies), fall back to ?token= for backward compat.
+    // Subprotocol format: "bearer.<jwt>"
+    const subprotoHeader = (req.headers['sec-websocket-protocol'] as string | undefined) ?? '';
+    const protoTokens = subprotoHeader
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const subprotoToken = protoTokens.find((p) => p.startsWith('bearer.'))?.slice('bearer.'.length);
+    const queryToken = url.searchParams.get('token');
+    const token = subprotoToken || queryToken;
+
+    if (!token) {
+      ws.close(4001, 'Missing token');
+      return;
+    }
 
     let user: any;
-    try { user = verifyAccessToken(token); }
-    catch { ws.close(4001, 'Invalid token'); return; }
+    try {
+      user = verifyAccessToken(token);
+    } catch {
+      ws.close(4001, 'Invalid token');
+      return;
+    }
 
     const client: AuthenticatedClient = {
-      ws, userId: user.sub, role: user.role,
-      sessionId, examId,
+      ws,
+      userId: user.sub,
+      role: user.role,
+      sessionId,
+      examId,
       lastHeartbeat: Date.now(),
       isStale: false,
     };
@@ -58,17 +92,21 @@ export function setupWebSocket(server: http.Server) {
       proctorRooms.get(examId)!.add(ws);
     }
 
-    ws.send(JSON.stringify({
-      type: 'connected',
-      payload: { userId: user.sub, role: user.role },
-      timestamp: new Date().toISOString(),
-    }));
+    ws.send(
+      JSON.stringify({
+        type: 'connected',
+        payload: { userId: user.sub, role: user.role },
+        timestamp: new Date().toISOString(),
+      })
+    );
 
     ws.on('message', async (data) => {
       try {
         const msg = JSON.parse(data.toString());
         await handleMessage(client, msg);
-      } catch { /* ignore malformed */ }
+      } catch {
+        /* ignore malformed */
+      }
     });
 
     ws.on('close', () => {
@@ -105,14 +143,18 @@ export function setupWebSocket(server: http.Server) {
             where: { id: sid, status: 'IN_PROGRESS' },
             data: { updatedAt: new Date() }, // touch updatedAt so proctor sees activity
           });
-        } catch { /* session may already be done */ }
+        } catch {
+          /* session may already be done */
+        }
 
         // Alert proctors
         if (client.examId) {
-          const session = await prisma.examSession.findUnique({
-            where: { id: sid },
-            include: { student: { select: { name: true } } },
-          }).catch(() => null);
+          const session = await prisma.examSession
+            .findUnique({
+              where: { id: sid },
+              include: { student: { select: { name: true } } },
+            })
+            .catch(() => null);
 
           broadcastToProctors(client.examId, {
             type: 'proctor:student_stale',
@@ -143,7 +185,6 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
   const ts = new Date().toISOString();
 
   switch (type) {
-
     // ── Student: heartbeat ──
     case 'session:heartbeat': {
       client.lastHeartbeat = Date.now();
@@ -168,13 +209,29 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
     case 'session:answer': {
       if (!payload.sessionId || !payload.questionId) break;
       const { saveAnswer } = await import('../modules/sessions/sessions.service');
-      await saveAnswer(payload.sessionId, payload.questionId, payload.selectedIds, payload.textAnswer);
-      client.ws.send(JSON.stringify({ type: 'answer:saved', payload: { questionId: payload.questionId }, timestamp: ts }));
+      await saveAnswer(
+        payload.sessionId,
+        payload.questionId,
+        payload.selectedIds,
+        payload.textAnswer
+      );
+      client.ws.send(
+        JSON.stringify({
+          type: 'answer:saved',
+          payload: { questionId: payload.questionId },
+          timestamp: ts,
+        })
+      );
 
       // Push updated snapshot to proctors
       if (client.examId) {
         const snapshot = await buildSessionSnapshot(payload.sessionId);
-        if (snapshot) broadcastToProctors(client.examId, { type: 'proctor:update', payload: snapshot, timestamp: ts });
+        if (snapshot)
+          broadcastToProctors(client.examId, {
+            type: 'proctor:update',
+            payload: snapshot,
+            timestamp: ts,
+          });
       }
       break;
     }
@@ -182,30 +239,37 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
     // ── Student: violation ──
     case 'session:violation': {
       if (!payload.sessionId || !payload.type) break;
-      const { recordViolation, submitSession } = await import('../modules/sessions/sessions.service');
+      const { recordViolation, submitSession } =
+        await import('../modules/sessions/sessions.service');
       const result = await recordViolation(payload.sessionId, payload.type, payload.description);
 
-      client.ws.send(JSON.stringify({
-        type: result.shouldLock ? 'session:locked' : 'violation:recorded',
-        payload: { violationCount: result.violationCount, maxViolations: result.maxViolations },
-        timestamp: ts,
-      }));
+      client.ws.send(
+        JSON.stringify({
+          type: result.shouldLock ? 'session:locked' : 'violation:recorded',
+          payload: { violationCount: result.violationCount, maxViolations: result.maxViolations },
+          timestamp: ts,
+        })
+      );
 
       if (result.shouldLock) {
         await submitSession(payload.sessionId, 'AUTO');
-        client.ws.send(JSON.stringify({
-          type: 'session:force_submit',
-          payload: { reason: 'Maximum violations reached' },
-          timestamp: ts,
-        }));
+        client.ws.send(
+          JSON.stringify({
+            type: 'session:force_submit',
+            payload: { reason: 'Maximum violations reached' },
+            timestamp: ts,
+          })
+        );
       }
 
       // Notify proctors of the violation in real time
       if (client.examId) {
-        const session = await prisma.examSession.findUnique({
-          where: { id: payload.sessionId },
-          include: { student: { select: { name: true } } },
-        }).catch(() => null);
+        const session = await prisma.examSession
+          .findUnique({
+            where: { id: payload.sessionId },
+            include: { student: { select: { name: true } } },
+          })
+          .catch(() => null);
 
         broadcastToProctors(client.examId, {
           type: 'proctor:violation',
@@ -222,7 +286,12 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
 
         // Also push updated snapshot
         const snapshot = await buildSessionSnapshot(payload.sessionId);
-        if (snapshot) broadcastToProctors(client.examId, { type: 'proctor:update', payload: snapshot, timestamp: ts });
+        if (snapshot)
+          broadcastToProctors(client.examId, {
+            type: 'proctor:update',
+            payload: snapshot,
+            timestamp: ts,
+          });
       }
       break;
     }
@@ -232,11 +301,13 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
       if (!['TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(client.role)) break;
       if (!payload.examId) break;
       const sessions = await getExamSnapshots(payload.examId);
-      client.ws.send(JSON.stringify({
-        type: 'proctor:full_snapshot',
-        payload: { sessions },
-        timestamp: ts,
-      }));
+      client.ws.send(
+        JSON.stringify({
+          type: 'proctor:full_snapshot',
+          payload: { sessions },
+          timestamp: ts,
+        })
+      );
       break;
     }
   }
@@ -257,9 +328,15 @@ async function buildSessionSnapshot(sessionId: string) {
     if (!session) return null;
 
     const secondsRemaining = session.startedAt
-      ? Math.max(0, Math.floor(
-          (new Date(session.startedAt).getTime() + session.exam.durationMinutes * 60_000 - Date.now()) / 1000
-        ))
+      ? Math.max(
+          0,
+          Math.floor(
+            (new Date(session.startedAt).getTime() +
+              session.exam.durationMinutes * 60_000 -
+              Date.now()) /
+              1000
+          )
+        )
       : null;
 
     const wsClient = sessionClients.get(sessionId);
@@ -276,9 +353,13 @@ async function buildSessionSnapshot(sessionId: string) {
       submittedAt: session.submittedAt,
       score: session.score,
       totalPoints: session.totalPoints,
-      isConnected: wsClient ? wsClient.ws.readyState === WebSocket.OPEN && !wsClient.isStale : false,
+      isConnected: wsClient
+        ? wsClient.ws.readyState === WebSocket.OPEN && !wsClient.isStale
+        : false,
     };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 async function getExamSnapshots(examId: string) {
@@ -286,7 +367,9 @@ async function getExamSnapshots(examId: string) {
     where: { examId },
     include: {
       student: { select: { id: true, name: true, email: true } },
-      exam: { select: { durationMinutes: true, maxViolations: true, _count: { select: { items: true } } } },
+      exam: {
+        select: { durationMinutes: true, maxViolations: true, _count: { select: { items: true } } },
+      },
       _count: { select: { answers: true, violations: true } },
     },
     orderBy: { createdAt: 'asc' },
@@ -294,9 +377,12 @@ async function getExamSnapshots(examId: string) {
 
   return sessions.map((s) => {
     const secondsRemaining = s.startedAt
-      ? Math.max(0, Math.floor(
-          (new Date(s.startedAt).getTime() + s.exam.durationMinutes * 60_000 - Date.now()) / 1000
-        ))
+      ? Math.max(
+          0,
+          Math.floor(
+            (new Date(s.startedAt).getTime() + s.exam.durationMinutes * 60_000 - Date.now()) / 1000
+          )
+        )
       : null;
     const wsClient = sessionClients.get(s.id);
     return {
@@ -312,7 +398,9 @@ async function getExamSnapshots(examId: string) {
       submittedAt: s.submittedAt,
       score: s.score,
       totalPoints: s.totalPoints,
-      isConnected: wsClient ? wsClient.ws.readyState === WebSocket.OPEN && !wsClient.isStale : false,
+      isConnected: wsClient
+        ? wsClient.ws.readyState === WebSocket.OPEN && !wsClient.isStale
+        : false,
     };
   });
 }
