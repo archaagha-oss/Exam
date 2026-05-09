@@ -10,17 +10,17 @@ results, but cannot edit the exam or generate PINs.
 
 **Permission matrix:**
 
-| Action                    | Owner | Co-proctor | Admin |
-|---------------------------|-------|------------|-------|
-| Create / edit exam        | ✓     | —          | —     |
-| Publish / activate / close| ✓     | —          | ✓     |
-| Generate PINs             | ✓     | —          | —     |
-| View live proctor         | ✓     | ✓          | ✓     |
-| Force-submit / unlock     | ✓     | ✓          | ✓     |
-| Flag student              | ✓     | ✓          | ✓     |
-| View results              | ✓     | ✓          | ✓     |
-| Invite co-proctor         | ✓     | —          | —     |
-| Remove co-proctor         | ✓     | —          | ✓     |
+| Action                     | Owner | Co-proctor | Admin |
+| -------------------------- | ----- | ---------- | ----- |
+| Create / edit exam         | ✓     | —          | —     |
+| Publish / activate / close | ✓     | —          | ✓     |
+| Generate PINs              | ✓     | —          | —     |
+| View live proctor          | ✓     | ✓          | ✓     |
+| Force-submit / unlock      | ✓     | ✓          | ✓     |
+| Flag student               | ✓     | ✓          | ✓     |
+| View results               | ✓     | ✓          | ✓     |
+| Invite co-proctor          | ✓     | —          | —     |
+| Remove co-proctor          | ✓     | —          | ✓     |
 
 ---
 
@@ -53,6 +53,7 @@ CREATE TABLE audit_logs (
 ```
 
 **Run migration:**
+
 ```bash
 # Fresh install — Prisma handles it automatically:
 npm run db:migrate
@@ -69,14 +70,15 @@ cd apps/api && npx prisma generate
 
 ### Co-proctor management
 
-| Method | Path | Who | Description |
-|--------|------|-----|-------------|
-| GET    | `/api/v1/proctors/exams/:examId` | Owner, Co-proctor, Admin | List co-proctors |
-| POST   | `/api/v1/proctors/exams/:examId` | Owner only | Invite by email |
-| DELETE | `/api/v1/proctors/exams/:examId/:teacherId` | Owner, Admin | Remove co-proctor |
-| GET    | `/api/v1/proctors/shared-with-me` | Teacher | Exams shared with me |
+| Method | Path                                        | Who                      | Description          |
+| ------ | ------------------------------------------- | ------------------------ | -------------------- |
+| GET    | `/api/v1/proctors/exams/:examId`            | Owner, Co-proctor, Admin | List co-proctors     |
+| POST   | `/api/v1/proctors/exams/:examId`            | Owner only               | Invite by email      |
+| DELETE | `/api/v1/proctors/exams/:examId/:teacherId` | Owner, Admin             | Remove co-proctor    |
+| GET    | `/api/v1/proctors/shared-with-me`           | Teacher                  | Exams shared with me |
 
 **Invite a co-proctor:**
+
 ```bash
 POST /api/v1/proctors/exams/:examId
 { "email": "colleague@school.edu" }
@@ -84,43 +86,43 @@ POST /api/v1/proctors/exams/:examId
 
 ### Admin endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET    | `/api/v1/admin/monitor` | All active exams school-wide with live counts |
-| GET    | `/api/v1/admin/stats` | Dashboard overview numbers |
-| GET    | `/api/v1/admin/users` | List users (search, filter, paginate) |
-| POST   | `/api/v1/admin/users` | Create user |
-| PUT    | `/api/v1/admin/users/:id` | Update user (name, role, isActive) |
-| DELETE | `/api/v1/admin/users/:id` | Delete user |
-| POST   | `/api/v1/admin/users/bulk-import` | Import up to 500 users from JSON array |
-| GET    | `/api/v1/admin/classes` | List classes |
-| POST   | `/api/v1/admin/classes` | Create class |
-| POST   | `/api/v1/admin/classes/:id/members` | Add students/teachers to class |
-| DELETE | `/api/v1/admin/classes/:id/members/:userId` | Remove member |
-| POST   | `/api/v1/admin/exams/:id/close` | Close any exam |
-| DELETE | `/api/v1/admin/proctors/:examId/:teacherId` | Remove any co-proctor |
+| Method | Path                                        | Description                                   |
+| ------ | ------------------------------------------- | --------------------------------------------- |
+| GET    | `/api/v1/admin/monitor`                     | All active exams school-wide with live counts |
+| GET    | `/api/v1/admin/stats`                       | Dashboard overview numbers                    |
+| GET    | `/api/v1/admin/users`                       | List users (search, filter, paginate)         |
+| POST   | `/api/v1/admin/users`                       | Create user                                   |
+| PUT    | `/api/v1/admin/users/:id`                   | Update user (name, role, isActive)            |
+| DELETE | `/api/v1/admin/users/:id`                   | Delete user                                   |
+| POST   | `/api/v1/admin/users/bulk-import`           | Import up to 500 users from JSON array        |
+| GET    | `/api/v1/admin/classes`                     | List classes                                  |
+| POST   | `/api/v1/admin/classes`                     | Create class                                  |
+| POST   | `/api/v1/admin/classes/:id/members`         | Add students/teachers to class                |
+| DELETE | `/api/v1/admin/classes/:id/members/:userId` | Remove member                                 |
+| POST   | `/api/v1/admin/exams/:id/close`             | Close any exam                                |
+| DELETE | `/api/v1/admin/proctors/:examId/:teacherId` | Remove any co-proctor                         |
 
 ### Audit log
 
-| Method | Path | Description |
-|--------|------|-------------|
+| Method | Path            | Description                      |
+| ------ | --------------- | -------------------------------- |
 | GET    | `/api/v1/audit` | Paginated audit log (admin only) |
 
 Query params: `?page=1&pageSize=50&action=USER_CREATED&actorId=...`
 
 ### Exports
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET    | `/api/v1/exports/exams/:id/results.csv` | Download exam results as CSV |
-| GET    | `/api/v1/exports/schools/:schoolId/users.csv` | Download all users as CSV |
+| Method | Path                                          | Description                  |
+| ------ | --------------------------------------------- | ---------------------------- |
+| GET    | `/api/v1/exports/exams/:id/results.csv`       | Download exam results as CSV |
+| GET    | `/api/v1/exports/schools/:schoolId/users.csv` | Download all users as CSV    |
 
 ### Exam lifecycle
 
-| Method | Path | Description |
-|--------|------|-------------|
+| Method | Path                         | Description             |
+| ------ | ---------------------------- | ----------------------- |
 | POST   | `/api/v1/exams/:id/activate` | Move PUBLISHED → ACTIVE |
-| POST   | `/api/v1/exams/:id/close` | Close exam (owner only) |
+| POST   | `/api/v1/exams/:id/close`    | Close exam (owner only) |
 
 ### PIN delivery (updated)
 
@@ -139,15 +141,16 @@ POST /api/v1/pins/generate
 
 ### Teacher portal (port 5174)
 
-| Page | Route | What's new |
-|------|-------|-----------|
-| Dashboard | `/` | ▶ Activate and Close buttons per exam |
+| Page               | Route             | What's new                                  |
+| ------------------ | ----------------- | ------------------------------------------- |
+| Dashboard          | `/`               | ▶ Activate and Close buttons per exam       |
 | Pins + Co-proctors | `/exams/:id/pins` | New "Co-proctors" tab, email delivery field |
-| Shared with me | `/shared` | Exams where you are a co-proctor |
+| Shared with me     | `/shared`         | Exams where you are a co-proctor            |
 
 **Sidebar** now has a "🤝 Shared with me" nav item.
 
 **Co-proctor invite flow:**
+
 1. Open any exam → click PINs → switch to "Co-proctors" tab
 2. Enter colleague's school email → Invite
 3. They receive an email notification (if SMTP configured) and the exam appears in their "Shared with me" page
@@ -155,14 +158,14 @@ POST /api/v1/pins/generate
 
 ### Admin portal (port 5175) — brand new
 
-| Page | Route | Description |
-|------|-------|-------------|
-| Overview | `/` | Stats cards + role breakdown + recent audit feed |
-| Live Monitor | `/monitor` | All active exams, student counts, violations, co-proctors |
-| Users | `/users` | Full CRUD: search, filter by role, create, edit, deactivate, delete |
-| Bulk Import | `/users/import` | CSV paste or file upload, up to 500 users |
-| Classes | `/classes` | Create and view classes |
-| Audit Log | `/audit` | Paginated log of all admin/teacher actions |
+| Page         | Route           | Description                                                         |
+| ------------ | --------------- | ------------------------------------------------------------------- |
+| Overview     | `/`             | Stats cards + role breakdown + recent audit feed                    |
+| Live Monitor | `/monitor`      | All active exams, student counts, violations, co-proctors           |
+| Users        | `/users`        | Full CRUD: search, filter by role, create, edit, deactivate, delete |
+| Bulk Import  | `/users/import` | CSV paste or file upload, up to 500 users                           |
+| Classes      | `/classes`      | Create and view classes                                             |
+| Audit Log    | `/audit`        | Paginated log of all admin/teacher actions                          |
 
 ---
 
@@ -181,17 +184,18 @@ npm run dev             # starts all 4 apps in parallel
 ```
 
 **Ports:**
+
 - Student browser: http://localhost:5173
-- Teacher portal:  http://localhost:5174
-- Admin portal:    http://localhost:5175
-- API:             http://localhost:4000
+- Teacher portal: http://localhost:5174
+- Admin portal: http://localhost:5175
+- API: http://localhost:4000
 
 **Demo credentials:**
-| Role    | Email                        | Password   |
+| Role | Email | Password |
 |---------|------------------------------|------------|
-| Admin   | admin@demo.school.edu        | admin123   |
-| Teacher | teacher@demo.school.edu      | teacher123 |
-| Student | student1@demo.school.edu     | student123 |
+| Admin | admin@demo.school.edu | admin123 |
+| Teacher | teacher@demo.school.edu | teacher123 |
+| Student | student1@demo.school.edu | student123 |
 
 ### Upgrading from Phase 2
 
@@ -243,11 +247,13 @@ npm run dev
 ## Security notes for Phase 3
 
 **canProctorExam guard** is now enforced at three layers:
+
 1. REST endpoints (sessions router) — 403 if not owner/co-proctor/admin
 2. WebSocket connection — 4003 close if not authorized to join proctor room
 3. Admin endpoints — schoolId scoping so admins only see their own school
 
 **Co-proctor constraints:**
+
 - Can only invite teachers in the same school (enforced server-side)
 - Cannot invite themselves
 - Invitations are idempotent (re-inviting same teacher just updates the timestamp)

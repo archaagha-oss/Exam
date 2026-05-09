@@ -1,4 +1,5 @@
 # SecureExam — Migration Guide
+
 # Phase 1 → Phase 4 Complete
 
 You have your Phase 1 codebase running. This guide tells you exactly what to do
@@ -405,12 +406,12 @@ npm run dev
 
 **Four apps now run in parallel:**
 
-| App | URL | Login |
-|-----|-----|-------|
+| App             | URL                   | Login                                 |
+| --------------- | --------------------- | ------------------------------------- |
 | Student browser | http://localhost:5173 | student1@demo.school.edu / student123 |
-| Teacher portal | http://localhost:5174 | teacher@demo.school.edu / teacher123 |
-| Admin portal | http://localhost:5175 | admin@demo.school.edu / admin123 |
-| API | http://localhost:4000 | — |
+| Teacher portal  | http://localhost:5174 | teacher@demo.school.edu / teacher123  |
+| Admin portal    | http://localhost:5175 | admin@demo.school.edu / admin123      |
+| API             | http://localhost:4000 | —                                     |
 
 ---
 
@@ -458,13 +459,13 @@ Group C if I have local git changes in those files.
 
 **"ANTHROPIC_API_KEY not set" in AI generator**
 → Add the key to `apps/api/.env`. The generator won't work without it but
-  everything else will.
+everything else will.
 
 **WebSocket connects but teacher gets "Access denied" on live view**
 → The Phase 3 permission guard is working correctly — only the exam owner,
-  invited co-proctors, and admins can access the live view. Check that the
-  logged-in teacher owns the exam or has been invited via the Pins → Co-proctors tab.
+invited co-proctors, and admins can access the live view. Check that the
+logged-in teacher owns the exam or has been invited via the Pins → Co-proctors tab.
 
 **Student sees "Results pending" instead of score**
 → The exam has "Show results after submission" disabled, or it has essay questions
-  that haven't been manually graded yet. Go to Results → Grade Essays.
+that haven't been manually graded yet. Go to Results → Grade Essays.
