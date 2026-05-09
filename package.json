@@ -13,9 +13,33 @@
     "db:seed": "npm run db:seed --workspace=apps/api",
     "db:studio": "npm run db:studio --workspace=apps/api",
     "migrate:tenant": "cd apps/api && npx ts-node -r tsconfig-paths/register scripts/migrate-tenant.ts",
-    "migrate:cleanup": "cd apps/api && npx ts-node -r tsconfig-paths/register scripts/migrate-tenant-cleanup.ts"
+    "migrate:cleanup": "cd apps/api && npx ts-node -r tsconfig-paths/register scripts/migrate-tenant-cleanup.ts",
+    "test": "npm run test --workspace=apps/api",
+    "typecheck": "npm run typecheck --workspace=apps/api",
+    "lint": "eslint \"apps/**/src/**/*.{ts,tsx}\" \"packages/**/src/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"apps/**/src/**/*.{ts,tsx,json,md}\" \"packages/**/src/**/*.{ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"apps/**/src/**/*.{ts,tsx,json,md}\" \"packages/**/src/**/*.{ts,tsx,json,md}\"",
+    "prepare": "husky || true"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.7",
+    "prettier": "^3.3.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
   }
 }

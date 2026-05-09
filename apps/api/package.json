@@ -9,7 +9,11 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.9",
@@ -41,7 +45,10 @@
     "@types/uuid": "^9.0.7",
     "@types/ws": "^8.5.10",
     "prisma": "^5.7.0",
+    "supertest": "^6.3.4",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.0",
+    "@types/supertest": "^6.0.2"
   }
 }
