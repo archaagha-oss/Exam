@@ -28,11 +28,15 @@ export async function listQuestions(
   });
 }
 
-export async function getQuestion(id: string) {
-  return prisma.question.findUnique({ where: { id } });
+export async function getQuestion(id: string, schoolId: string) {
+  return prisma.question.findFirst({ where: { id, schoolId } });
 }
 
-export async function createQuestion(createdBy: string, schoolId: string, data: CreateQuestionInput) {
+export async function createQuestion(
+  createdBy: string,
+  schoolId: string,
+  data: CreateQuestionInput
+) {
   return prisma.question.create({
     data: {
       createdBy,
@@ -49,7 +53,22 @@ export async function createQuestion(createdBy: string, schoolId: string, data: 
   });
 }
 
-export async function updateQuestion(id: string, data: Partial<CreateQuestionInput>) {
+async function assertQuestionInSchool(id: string, schoolId: string) {
+  const q = await prisma.question.findFirst({ where: { id, schoolId }, select: { id: true } });
+  if (!q) {
+    const e: any = new Error('Question not found');
+    e.status = 404;
+    e.name = 'NotFoundError';
+    throw e;
+  }
+}
+
+export async function updateQuestion(
+  id: string,
+  schoolId: string,
+  data: Partial<CreateQuestionInput>
+) {
+  await assertQuestionInSchool(id, schoolId);
   return prisma.question.update({
     where: { id },
     data: {
@@ -65,6 +84,7 @@ export async function updateQuestion(id: string, data: Partial<CreateQuestionInp
   });
 }
 
-export async function deleteQuestion(id: string) {
+export async function deleteQuestion(id: string, schoolId: string) {
+  await assertQuestionInSchool(id, schoolId);
   return prisma.question.delete({ where: { id } });
 }

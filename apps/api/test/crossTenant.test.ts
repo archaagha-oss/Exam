@@ -6,9 +6,7 @@ import app from '../src/app';
 
 const prisma = new PrismaClient();
 
-// Cycle 1 unlocks these tests by enforcing schoolId on getById/update/delete.
-// Before cycle 1 these would fail; flip describe.skip → describe to enable.
-describe.skip('cross-tenant isolation', () => {
+describe('cross-tenant isolation', () => {
   let schoolBExamId: string;
   let schoolATeacherToken: string;
 
@@ -27,10 +25,10 @@ describe.skip('cross-tenant isolation', () => {
     });
 
     const teacherA = await prisma.user.upsert({
-      where: { email: 'teacherA@a.test.edu' },
+      where: { email: 'teacher.a@a.test.edu' },
       update: {},
       create: {
-        email: 'teacherA@a.test.edu',
+        email: 'teacher.a@a.test.edu',
         passwordHash,
         name: 'Teacher A',
         role: 'TEACHER',
@@ -38,10 +36,10 @@ describe.skip('cross-tenant isolation', () => {
       },
     });
     const teacherB = await prisma.user.upsert({
-      where: { email: 'teacherB@b.test.edu' },
+      where: { email: 'teacher.b@b.test.edu' },
       update: {},
       create: {
-        email: 'teacherB@b.test.edu',
+        email: 'teacher.b@b.test.edu',
         passwordHash,
         name: 'Teacher B',
         role: 'TEACHER',
@@ -61,7 +59,7 @@ describe.skip('cross-tenant isolation', () => {
 
     const loginA = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'teacherA@a.test.edu', password: 'test12345' });
+      .send({ email: 'teacher.a@a.test.edu', password: 'test12345' });
     schoolATeacherToken = loginA.body?.data?.accessToken;
     expect(schoolATeacherToken).toBeTypeOf('string');
   });
