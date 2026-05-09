@@ -45,32 +45,6 @@ export async function login(email: string, password: string) {
   };
 }
 
-
-  const payload = {
-    sub: user.id,
-    email: user.email,
-    role: user.role as any,
-    schoolId: user.schoolId,
-    name: user.name,
-  };
-
-  const accessToken = signAccessToken(payload);
-  const refreshToken = signRefreshToken(user.id);
-
-  return {
-    accessToken,
-    refreshToken,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      schoolId: user.schoolId,
-      school: user.school,
-    },
-  };
-}
-
 export async function refresh(token: string) {
   const { sub: userId } = verifyRefreshToken(token);
 

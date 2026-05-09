@@ -50,7 +50,7 @@ export async function startSession(studentId: string, examId: string, ipAddress:
 
   if (existing) {
     if (['SUBMITTED', 'AUTO_SUBMITTED'].includes(existing.status)) throw new Error('Exam already submitted');
-    return buildSessionState(existing);
+    return await buildSessionState(existing);
   }
 
   const exam = await prisma.exam.findUnique({
@@ -90,10 +90,10 @@ export async function startSession(studentId: string, examId: string, ipAddress:
     },
   });
 
-  return buildSessionState(session);
+  return await buildSessionState(session);
 }
 
-function buildSessionState(session: any) {
+async function buildSessionState(session: any) {
   const exam = session.exam;
   const questionOrder: string[] = (session.questionOrder as string[]) ?? exam.items.map((i: any) => i.id);
   const optionOrders: Record<string, string[]> = (session.optionOrders as any) ?? {};
