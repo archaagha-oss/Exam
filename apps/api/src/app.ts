@@ -31,13 +31,44 @@ import superadminRouter from './modules/superadmin/superadmin.router';
 
 const app = express();
 
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"], // Tailwind injects inline styles
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        connectSrc: ["'self'"], // tighten further at nginx layer
+        fontSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    strictTransportSecurity: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'same-site' },
+  })
+);
+
+// Strict CORS: only origins from env (no wildcards), validated per request
+const corsOrigins = (
+  process.env.CORS_ORIGINS ||
+  'http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:5176'
+)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 app.use(
   cors({
-    origin: (
-      process.env.CORS_ORIGINS ||
-      'http://localhost:5173,http://localhost:5174,http://localhost:5175'
-    ).split(','),
+    origin: (origin, cb) => {
+      // Allow same-origin / curl-style requests (no Origin header)
+      if (!origin) return cb(null, true);
+      if (corsOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error('Origin not allowed by CORS'));
+    },
     credentials: true,
   })
 );
@@ -86,9 +117,31 @@ api.use('/platform', superadminRouter);
 app.use('/api/v1', api);
 
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
-});
+
+// Centralised error handler. Never expose stack traces or provider details.
+// Status codes from typed errors (NotFoundError / ForbiddenError / etc.) are
+// honoured; everything else is 500.
+app.use(
+  (
+    err: Error & { status?: number; expose?: boolean; code?: string },
+    _req: express.Request,
+    res: express.Response,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _next: express.NextFunction
+  ) => {
+    const status = typeof err.status === 'number' ? err.status : 500;
+    if (status >= 500) {
+      // eslint-disable-next-line no-console
+      console.error('[error]', err.stack || err.message || err);
+    }
+    const safeMessage =
+      status < 500
+        ? err.message || 'Bad request'
+        : process.env.NODE_ENV === 'production'
+          ? 'Internal server error'
+          : err.message || 'Internal server error';
+    res.status(status).json({ error: safeMessage, ...(err.code ? { code: err.code } : {}) });
+  }
+);
 
 export default app;
