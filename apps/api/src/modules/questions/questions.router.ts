@@ -26,10 +26,12 @@ const questionSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
-// GET /api/v1/questions
+// GET /api/v1/questions  — paginated. Query: type, tags, difficulty, search,
+// cursor (id of last item), take (default 50, max 200).
 router.get('/', async (req: Request, res: Response) => {
-  const questions = await listQuestions(req.user.schoolId!, req.query as any);
-  res.json({ data: questions });
+  const page = await listQuestions(req.user.schoolId!, req.query as any);
+  // page.data + page.nextCursor; preserve old shape under .data, expose nextCursor at top level
+  res.json({ data: page.data, nextCursor: page.nextCursor });
 });
 
 // GET /api/v1/questions/:id

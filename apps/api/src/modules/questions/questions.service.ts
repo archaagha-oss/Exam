@@ -1,5 +1,6 @@
 // apps/api/src/modules/questions/questions.service.ts
 import prisma from '../../lib/prisma';
+import { paginate, toPage } from '../../lib/pagination';
 
 export interface CreateQuestionInput {
   type: string;
@@ -14,9 +15,17 @@ export interface CreateQuestionInput {
 
 export async function listQuestions(
   schoolId: string,
-  filters: { type?: string; tags?: string; difficulty?: string; search?: string }
+  filters: {
+    type?: string;
+    tags?: string;
+    difficulty?: string;
+    search?: string;
+    cursor?: string;
+    take?: number;
+  }
 ) {
-  return prisma.question.findMany({
+  const take = Math.max(1, Math.min(200, Number(filters.take) || 50));
+  const rows = await prisma.question.findMany({
     where: {
       schoolId,
       ...(filters.type ? { type: filters.type as any } : {}),
@@ -25,7 +34,9 @@ export async function listQuestions(
       ...(filters.search ? { body: { contains: filters.search, mode: 'insensitive' } } : {}),
     },
     orderBy: { createdAt: 'desc' },
+    ...paginate({ cursor: filters.cursor, take }),
   });
+  return toPage(rows, take);
 }
 
 export async function getQuestion(id: string, schoolId: string) {
