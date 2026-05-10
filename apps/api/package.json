@@ -21,6 +21,7 @@
     "@aws-sdk/s3-request-presigner": "^3.490.0",
     "@prisma/client": "^5.7.0",
     "@secureexam/shared-types": "*",
+    "@sentry/node": "^7.110.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",

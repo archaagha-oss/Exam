@@ -14,14 +14,15 @@ anti-pattern "don't ship features faster than you fix invariants" (`02-north-
 star.md` §7.1), Stage 1's job was to close the doc-vs-code gap that the audit
 surfaced and stop the security bleed before any Stage 2+ feature work.
 
-Four cycles shipped on `claude/stage-1-security-stability`:
+Five cycles shipped:
 
-| Commit | Cycle | Focus |
+| Branch | Cycle | Focus |
 | --- | --- | --- |
-| `02c5650` | **1.1a** | Tenant isolation sweep + JWT alg pin + OTP scrub |
-| `e381c2f` | **1.1b** | Superadmin hardening + nginx HTTPS + WS auth model |
-| `a0b1bdb` | **1.2** | Server-authoritative timer + IndexedDB autosave |
-| `a1fc8b2` | **1.3** | Auth tightening + AI feedback guard + idempotent generators |
+| `claude/stage-1-security-stability` | **1.1a** | Tenant isolation sweep + JWT alg pin + OTP scrub |
+| `claude/stage-1-security-stability` | **1.1b** | Superadmin hardening + nginx HTTPS + WS auth model |
+| `claude/stage-1-security-stability` | **1.2** | Server-authoritative timer + IndexedDB autosave |
+| `claude/stage-1-security-stability` | **1.3** | Auth tightening + AI feedback guard + idempotent generators |
+| `claude/stage-1-cycle-1-4-ops`     | **1.4** | Sentry shim + staging compose + dev-cert script + PR template |
 
 ---
 
@@ -53,13 +54,18 @@ Four cycles shipped on `claude/stage-1-security-stability`:
 | **P1-14** | Dev SPA Dockerfiles use `npm install`, not `npm ci` | 1.1b | All four SPA Dockerfiles now use `npm ci`, and all four COPY shared-frontend (three were silently missing it) |
 | **P1-15** | `POST /pins/generate` and `/security/.../invites/generate` not idempotent | 1.3 | Both wrapped with the existing `idempotency()` middleware |
 
-### P1 deferred
+### P1 closed in cycle 1.4
+
+| ID | Finding | Cycle | Outcome |
+| --- | --- | --- | --- |
+| **P1-10** | Sentry / error tracking | 1.4 | New `apps/api/src/lib/sentry.ts` shim. `initSentry()` is a no-op without `SENTRY_DSN`. 5xxs from the centralised error middleware forward to Sentry; `unhandledRejection` / `uncaughtException` also captured. PII-safe `beforeSend` strips bodies, cookies, auth headers, idempotency keys. SPA Sentry is deferred to Stage 6. |
+| **P1-11** | No staging environment | 1.4 | New `docker-compose.staging.yml` mirrors prod with NODE_ENV=staging, self-signed certs, and an always-on migrate profile. New `scripts/dev-certs.sh` generates self-signed certs for the five vhosts so the cycle-1.1b nginx HTTPS config can be exercised locally. Real DNS / Let's Encrypt provisioning still owned by ops. |
+
+### P1 still deferred
 
 | ID | Finding | Why deferred |
 | --- | --- | --- |
-| **P1-9** | nginx / api / redis healthchecks | api + redis added in 1.1b; nginx healthcheck is partial (best-effort). Full nginx liveness needs a dedicated cycle. |
-| **P1-10** | Sentry / error tracking | Real value but adds a vendor + ~3 dep updates across api + 4 SPAs. Better as a focused observability cycle (Stage 6 territory). |
-| **P1-11** | No staging environment | Pure infra, not code. Needs a `docker-compose.staging.yml` plus a real DNS/cert path. Owner: ops. |
+| **P1-9** | nginx / api / redis healthchecks | api + redis added in 1.1b; nginx healthcheck is partial (best-effort). Full nginx liveness probe needs a dedicated cycle (the LB check the platform admin's reverse proxy uses is the right home for it). |
 | **P1-12** | CI branch protection | GitHub setting, not in code. Needs admin-side toggle. CI gates exist; protection is one click. |
 | **P1-13** | 30 type suppressions in `ExamSessionPage` | The page is 1.1k lines. Will piggy-back on Stage 4 when it's split. Fighting it during a cycle that already touches it heavily would risk regressions on the hot path. |
 
@@ -117,20 +123,23 @@ place; the assertions in the test suite cover the deterministic ones.
 
 Honest list of what this stage did **not** do:
 
-- **No staging environment was created.** `docker-compose.prod.yml` got
-  healthchecks and the new admin / superadmin volumes, but no
-  `docker-compose.staging.yml` exists. Real Let's Encrypt cert paths in
-  `nginx.conf` are placeholders (`*.yourschool.edu`).
-- **No Sentry / observability work.** `docs/00-audit.md` §10 already
-  credits the existing pino logs, prom-client metrics, request IDs, and
-  audit log. Sentry is a Stage 6 / cycle 1.4 item.
 - **D1 (split SUPER_ADMIN) was not ratified.** The cycle 1.1b superadmin
   hardening fixes the bleed but does not split the role. Until D1 is
   ratified, the `superadmin` portal is effectively the future
   PLATFORM_ADMIN portal but still uses the `SUPER_ADMIN` enum value.
+- **D6 (collapse teacher + admin into `/console`) was not ratified.**
+  Recommendation in `docs/decisions.md` stands; gates Stage 2.
+- **Real Let's Encrypt cert provisioning** is still ops territory.
+  Cycle 1.4 ships `docker-compose.staging.yml` + self-signed certs, which
+  unlocks local exercise of the cycle-1.1b nginx HTTPS config; production
+  cert renewal automation needs a dedicated cycle alongside the RUNBOOK
+  update.
 - **Branch protection** is not enforced at the GitHub-settings level. The
   CI gates exist (`lint`, `typecheck`, `test-api`); a one-click toggle in
   the repo settings is the missing piece, owned by the repo admin.
+- **SPA Sentry** (4 frontends) is deferred to Stage 6. The api-side Sentry
+  shim catches the higher-leverage class of failures (server 5xxs,
+  unhandled promise rejections, uncaught exceptions).
 
 ---
 

@@ -6,6 +6,11 @@ import http from 'http';
 import app from './app';
 import { setupWebSocket } from './websocket/server';
 import { logger } from './lib/logger';
+import { initSentry, captureError } from './lib/sentry';
+
+// Sentry init (cycle 1.4 / P1-10). No-op without SENTRY_DSN. Must happen
+// before any potentially-throwing code so error handlers see the SDK ready.
+initSentry().catch((err) => logger.warn({ err }, '[sentry] init promise rejected'));
 
 const server = http.createServer(app);
 setupWebSocket(server);
@@ -25,9 +30,11 @@ server.listen(env.PORT, () => {
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason }, 'unhandled promise rejection');
+  captureError(reason, { source: 'unhandledRejection' });
 });
 process.on('uncaughtException', (err) => {
   logger.fatal({ err: err.stack }, 'uncaught exception');
+  captureError(err, { source: 'uncaughtException' });
   process.exit(1);
 });
 
