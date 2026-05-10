@@ -3,13 +3,13 @@
 
 import prisma from './prisma';
 
-// Sentinel used when a non-SUPER_ADMIN account has no schoolId. It will match
+// Sentinel used when a non-PLATFORM_ADMIN account has no schoolId. It will match
 // no real row, denying access by construction. Real schoolIds are UUIDs.
 const NO_SCHOOL_SENTINEL = '__NO_SCHOOL__';
 
 /**
  * Build the schoolId where-fragment for the current request:
- * - SUPER_ADMIN  → {}      (cross-tenant; gated on D1)
+ * - PLATFORM_ADMIN  → {}      (cross-tenant; gated on D1)
  * - any other    → { schoolId: <user's schoolId or sentinel> }
  *
  * Spread directly into a Prisma `where` clause:
@@ -19,23 +19,22 @@ export function tenantScope(
   role: string,
   schoolId: string | null | undefined
 ): { schoolId?: string } {
-  if (role === 'SUPER_ADMIN') return {};
+  if (role === 'PLATFORM_ADMIN') return {};
   return { schoolId: schoolId ?? NO_SCHOOL_SENTINEL };
 }
 
-// Tenant-scoping rules:
-//   - SUPER_ADMIN is platform-wide (cross-tenant by current schema; gated on
-//     decision D1 — will become PLATFORM_ADMIN, vendor-only).
-//   - ADMIN and TEACHER are scoped to their own schoolId. An ADMIN at school A
-//     CANNOT manage or proctor an exam at school B even if they pass a forged
-//     examId. Callers MUST pass req.user.schoolId.
+// Tenant-scoping rules (cycle 2.0a / D1):
+//   - PLATFORM_ADMIN is vendor-side, cross-tenant by design.
+//   - SCHOOL_ADMIN and TEACHER are scoped to their own schoolId. A SCHOOL_ADMIN
+//     at school A CANNOT manage or proctor an exam at school B even if they
+//     pass a forged examId. Callers MUST pass req.user.schoolId.
 //   - TEACHER additionally must own the exam (manage) or be assigned as a
 //     co-proctor (proctor).
 
 /**
  * Returns true if the given user can proctor (monitor + take action on) an exam.
  * Allowed: owner teacher in same school | invited co-proctor in same school |
- *          admin in same school | super_admin (any school)
+ *          school admin in same school | platform admin (any school)
  */
 export async function canProctorExam(
   userId: string,
@@ -43,7 +42,7 @@ export async function canProctorExam(
   schoolId: string | null | undefined,
   examId: string
 ): Promise<boolean> {
-  if (role === 'SUPER_ADMIN') return true;
+  if (role === 'PLATFORM_ADMIN') return true;
   if (!schoolId) return false;
 
   const exam = await prisma.exam.findUnique({
@@ -52,7 +51,7 @@ export async function canProctorExam(
   });
   if (!exam) return false;
   if (exam.schoolId !== schoolId) return false;
-  if (role === 'ADMIN') return true;
+  if (role === 'SCHOOL_ADMIN') return true;
   if (role !== 'TEACHER') return false;
   if (exam.teacherId === userId) return true;
 
@@ -64,8 +63,9 @@ export async function canProctorExam(
 }
 
 /**
- * Returns true if the user can edit/manage an exam (owner or admin in same
- * school, or super_admin). Co-proctors are explicitly excluded from editing.
+ * Returns true if the user can edit/manage an exam (owner or school admin in
+ * same school, or platform admin). Co-proctors are explicitly excluded from
+ * editing.
  */
 export async function canManageExam(
   userId: string,
@@ -73,7 +73,7 @@ export async function canManageExam(
   schoolId: string | null | undefined,
   examId: string
 ): Promise<boolean> {
-  if (role === 'SUPER_ADMIN') return true;
+  if (role === 'PLATFORM_ADMIN') return true;
   if (!schoolId) return false;
 
   const exam = await prisma.exam.findUnique({
@@ -82,7 +82,7 @@ export async function canManageExam(
   });
   if (!exam) return false;
   if (exam.schoolId !== schoolId) return false;
-  if (role === 'ADMIN') return true;
+  if (role === 'SCHOOL_ADMIN') return true;
   if (role !== 'TEACHER') return false;
   return exam.teacherId === userId;
 }

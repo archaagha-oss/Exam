@@ -18,7 +18,7 @@ router.get('/', async (req: Request, res: Response) => {
   if (req.query.targetId) where.targetId = req.query.targetId;
 
   // Admins can only see their own school's logs
-  if (req.user.role === 'ADMIN') {
+  if (req.user.role === 'SCHOOL_ADMIN') {
     where.actor = { schoolId: req.user.schoolId };
   }
 

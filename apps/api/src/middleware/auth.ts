@@ -38,8 +38,12 @@ export function requireRole(...roles: Role[]) {
   };
 }
 
-// Shorthand guards
-export const isTeacher = requireRole('TEACHER', 'ADMIN', 'SUPER_ADMIN');
-export const isAdmin = requireRole('ADMIN', 'SUPER_ADMIN');
-export const isSuperAdmin = requireRole('SUPER_ADMIN');
+// Shorthand guards. After cycle 2.0a / D1:
+//   - isTeacher passes for TEACHER + SCHOOL_ADMIN + PLATFORM_ADMIN (anyone
+//     with a legitimate reason to see exam-author-or-above scoped data)
+//   - isAdmin passes for SCHOOL_ADMIN + PLATFORM_ADMIN
+//   - isPlatformAdmin is the strictest gate, vendor-side only.
+export const isTeacher = requireRole('TEACHER', 'SCHOOL_ADMIN', 'PLATFORM_ADMIN');
+export const isAdmin = requireRole('SCHOOL_ADMIN', 'PLATFORM_ADMIN');
+export const isPlatformAdmin = requireRole('PLATFORM_ADMIN');
 export const isStudent = requireRole('STUDENT');

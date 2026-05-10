@@ -136,7 +136,7 @@ export default function OverviewPage() {
           <div className="space-y-3">
             {Object.entries(stats.roleBreakdown).map(([role, count]) => {
               const pct = Math.round((count / stats.totalUsers) * 100);
-              const clr: Record<string,string> = { STUDENT:'bg-blue-500', TEACHER:'bg-emerald-500', ADMIN:'bg-amber-500', SUPER_ADMIN:'bg-red-500' };
+              const clr: Record<string,string> = { STUDENT:'bg-blue-500', TEACHER:'bg-emerald-500', ADMIN:'bg-amber-500', PLATFORM_ADMIN:'bg-red-500' };
               return (
                 <div key={role}>
                   <div className="flex justify-between text-sm mb-1">

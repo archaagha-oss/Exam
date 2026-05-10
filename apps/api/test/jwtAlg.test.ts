@@ -21,7 +21,7 @@ describe('JWT algorithm pinning', () => {
     // Hand-craft an unsigned JWT (header.payload.<empty signature>)
     const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
     const payload = Buffer.from(
-      JSON.stringify({ sub: 'attacker', role: 'SUPER_ADMIN' })
+      JSON.stringify({ sub: 'attacker', role: 'PLATFORM_ADMIN' })
     ).toString('base64url');
     const token = `${header}.${payload}.`;
 
@@ -29,7 +29,7 @@ describe('JWT algorithm pinning', () => {
   });
 
   it('rejects a token signed with HS512 even with the right secret', () => {
-    const token = jwt.sign({ sub: 'attacker', role: 'SUPER_ADMIN' }, secret, {
+    const token = jwt.sign({ sub: 'attacker', role: 'PLATFORM_ADMIN' }, secret, {
       algorithm: 'HS512',
     });
     expect(() => verifyAccessToken(token)).toThrow();

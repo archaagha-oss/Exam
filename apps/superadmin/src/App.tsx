@@ -28,7 +28,7 @@ function LoginPage() {
       const { data } = await api.post('/auth/login', { email, password });
       const user = data?.data?.user;
       const token = data?.data?.accessToken;
-      if (user?.role !== 'SUPER_ADMIN') {
+      if (user?.role !== 'PLATFORM_ADMIN') {
         setError('Super admin access required.');
         return;
       }
@@ -154,7 +154,7 @@ export default function App() {
         const { data } = await api.post('/auth/refresh');
         const token = data?.data?.accessToken;
         const user = data?.data?.user;
-        if (!cancelled && token && user && user.role === 'SUPER_ADMIN') {
+        if (!cancelled && token && user && user.role === 'PLATFORM_ADMIN') {
           setAuth(token, user);
         } else if (!cancelled) {
           clearAuth();

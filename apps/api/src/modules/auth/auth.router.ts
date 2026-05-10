@@ -57,7 +57,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
         sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       })
-      .json({ data: { accessToken: result.accessToken } });
+      .json({ data: { accessToken: result.accessToken, user: result.user } });
   } catch {
     res.status(401).json({ error: 'Invalid or expired refresh token' });
   }

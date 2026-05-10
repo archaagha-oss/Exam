@@ -82,7 +82,7 @@ export function setupWebSocket(server: http.Server) {
 
     if (sessionId) sessionClients.set(sessionId, client);
 
-    if (examId && ['TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+    if (examId && ['TEACHER', 'SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(user.role)) {
       // Phase 3: enforce access control before joining proctor room
       const { canProctorExam } = await import('../lib/examAccess');
       const allowed = await canProctorExam(user.sub, user.role, user.schoolId, examId);
@@ -320,7 +320,7 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
 
     // ── Proctor: request full snapshot of all sessions ──
     case 'proctor:request_snapshot': {
-      if (!['TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(client.role)) break;
+      if (!['TEACHER', 'SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(client.role)) break;
       if (!payload.examId) break;
       const sessions = await getExamSnapshots(payload.examId);
       client.ws.send(

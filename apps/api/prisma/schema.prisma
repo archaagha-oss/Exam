@@ -12,8 +12,17 @@ datasource db {
 enum Role {
   STUDENT
   TEACHER
-  ADMIN
-  SUPER_ADMIN
+  // Cycle 2.0a / D1: ADMIN renamed to SCHOOL_ADMIN, PLATFORM_ADMIN renamed to
+  // PLATFORM_ADMIN, so role names match the audience they actually serve:
+  //   - SCHOOL_ADMIN   is scoped to a single schoolId (the IT lead, daily
+  //                    user of the customer-side admin portal)
+  //   - PLATFORM_ADMIN is cross-tenant by design (vendor SecureExam staff,
+  //                    hosted on platform.secureexam.app per cycle 1.1b)
+  // The runtime constraint that PLATFORM_ADMIN may have null schoolId and
+  // every other role must not is enforced at the application layer
+  // (auth.service.ts) — adding a SQL CHECK constraint is a follow-up.
+  SCHOOL_ADMIN
+  PLATFORM_ADMIN
 }
 
 model User {

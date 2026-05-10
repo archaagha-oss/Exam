@@ -3,7 +3,7 @@
 
 // ── ROLES ──────────────────────────────────────────────────
 
-export type Role = 'STUDENT' | 'TEACHER' | 'ADMIN' | 'SUPER_ADMIN';
+export type Role = 'STUDENT' | 'TEACHER' | 'SCHOOL_ADMIN' | 'PLATFORM_ADMIN';
 
 // ── QUESTION TYPES ─────────────────────────────────────────
 
