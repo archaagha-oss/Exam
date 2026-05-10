@@ -1,5 +1,22 @@
 # SecureExam — Architecture
 
+> **⚠ Pre-Stage-1 document.** Cycle 0.1's audit (`docs/00-audit.md`) found
+> that **5 of the 7 invariants in this document were partially or wholly
+> false in the code at the time of writing.** Stage 1 (cycles 1.1a → 1.4)
+> closed those gaps; Stage 2 prereqs (cycles 2.0a → 2.0f) restructured
+> roles and apps. The current authoritative system description is now
+> spread across:
+>
+> - [`docs/00-audit.md`](00-audit.md) — what the codebase actually does
+> - [`docs/03-stage1-closure.md`](03-stage1-closure.md) — security & stability invariants now in code
+> - [`docs/04-stage2-prereqs-closure.md`](04-stage2-prereqs-closure.md) — role split, console merge, feature flags, impersonation audit
+> - [`docs/decisions.md`](decisions.md) — ADRs (D1–D7)
+> - [`README.md`](../README.md) — quick-start + API reference + WS protocol (rewritten cycle 2.1b)
+>
+> Sections of this doc that overlap with the closure docs above are stale
+> wherever they conflict; trust the closure docs. A full rewrite of this
+> file is its own cycle and hasn't happened yet.
+
 The current state, in one document. Phase docs (history of how each
 feature evolved) live in `docs/archive/`.
 

@@ -1,5 +1,20 @@
 # SecureExam — Operational Runbook
 
+> **⚠ Pre-Stage-1 document.** App / service / hostname references in this
+> file describe the pre-D6 / pre-2.0c topology (5 portals incl. separate
+> teacher + admin + superadmin). Current topology is 3 SPAs (student,
+> console, platform) on 4 vhosts; see:
+>
+> - [`README.md`](../README.md) §"Production Deployment" — current 4-vhost
+>   nginx + Let's Encrypt walkthrough
+> - [`docs/04-stage2-prereqs-closure.md`](04-stage2-prereqs-closure.md) §2
+>   — apps / roles / hostnames / build matrix
+> - `docker-compose.staging.yml` + `scripts/dev-certs.sh` — cycle 1.4
+>   staging environment + self-signed cert workflow
+>
+> Backup / restore / incident playbook sections of this file are still
+> accurate — the underlying ops shape didn't change.
+
 For oncall / SRE during incidents. Owners: platform team.
 
 ## Architecture quick reference

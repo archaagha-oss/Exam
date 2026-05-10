@@ -1,5 +1,25 @@
 # SecureExam — Threat Model
 
+> **⚠ Pre-Stage-1 document.** Several "we mitigate X" claims in earlier
+> revisions of this file were proven false by cycle 0.1's audit (e.g.
+> tenant isolation, server-authoritative timer, JWT algorithm pinning, OTP
+> log scrubbing). Stage 1 (cycles 1.1a → 1.4) closed those gaps and pinned
+> the relevant invariants in tests. For the current state of what's
+> actually in code, read:
+>
+> - [`docs/03-stage1-closure.md`](03-stage1-closure.md) §1, §3 — every audit
+>   P0 / P1 finding mapped to where it was fixed
+> - `apps/api/test/crossTenant.test.ts` (14 cross-tenant regressions),
+>   `apps/api/test/jwtAlg.test.ts` (alg-confusion), and
+>   `apps/api/test/tenantInvariant.test.ts` (static scan against the
+>   `findUnique`-by-URL-id pattern that was the source of every IDOR)
+> - [`docs/01-product.md`](01-product.md) §4 (stakes ladder) and §5
+>   (compliance posture: GDPR + FERPA + COPPA + SOC 2)
+>
+> Where this file describes attacker capabilities and mitigations
+> conceptually it remains useful; where it makes implementation claims
+> that conflict with the closure docs above, trust the closure docs.
+
 ## What we deter, what we detect, what we cannot prevent
 
 This document is deliberately blunt. Marketing copy that promises "lockdown
