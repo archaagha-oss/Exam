@@ -117,8 +117,16 @@ describe('cross-tenant isolation', () => {
         body: 'B-school question',
         type: 'MCQ',
         schoolId: schoolB.id,
-        authorId: teacherB.id,
-        choices: ['a', 'b', 'c', 'd'],
+        // Cycle 2.1d bug fix: schema field is `createdBy`, not `authorId`;
+        // schema field is `options`, not `choices`. The earlier values
+        // would have failed Prisma's create with "Unknown argument".
+        createdBy: teacherB.id,
+        options: [
+          { id: 'a', text: 'a' },
+          { id: 'b', text: 'b' },
+          { id: 'c', text: 'c' },
+          { id: 'd', text: 'd' },
+        ],
         correctIds: ['a'],
       },
     });
