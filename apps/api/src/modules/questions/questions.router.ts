@@ -26,16 +26,21 @@ const questionSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
-// GET /api/v1/questions
+// GET /api/v1/questions  — paginated. Query: type, tags, difficulty, search,
+// cursor (id of last item), take (default 50, max 200).
 router.get('/', async (req: Request, res: Response) => {
-  const questions = await listQuestions(req.user.schoolId!, req.query as any);
-  res.json({ data: questions });
+  const page = await listQuestions(req.user.schoolId!, req.query as any);
+  // page.data + page.nextCursor; preserve old shape under .data, expose nextCursor at top level
+  res.json({ data: page.data, nextCursor: page.nextCursor });
 });
 
 // GET /api/v1/questions/:id
 router.get('/:id', async (req: Request, res: Response) => {
-  const question = await getQuestion(req.params.id);
-  if (!question) { res.status(404).json({ error: 'Question not found' }); return; }
+  const question = await getQuestion(req.params.id, req.user.schoolId!);
+  if (!question) {
+    res.status(404).json({ error: 'Question not found' });
+    return;
+  }
   res.json({ data: question });
 });
 
@@ -57,14 +62,30 @@ router.put('/:id', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
     return;
   }
-  const question = await updateQuestion(req.params.id, parsed.data);
-  res.json({ data: question });
+  try {
+    const question = await updateQuestion(req.params.id, req.user.schoolId!, parsed.data);
+    res.json({ data: question });
+  } catch (err: any) {
+    if (err?.status === 404 || err?.name === 'NotFoundError') {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    throw err;
+  }
 });
 
 // DELETE /api/v1/questions/:id
 router.delete('/:id', async (req: Request, res: Response) => {
-  await deleteQuestion(req.params.id);
-  res.json({ data: { message: 'Question deleted' } });
+  try {
+    await deleteQuestion(req.params.id, req.user.schoolId!);
+    res.json({ data: { message: 'Question deleted' } });
+  } catch (err: any) {
+    if (err?.status === 404 || err?.name === 'NotFoundError') {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    throw err;
+  }
 });
 
 export default router;

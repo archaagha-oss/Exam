@@ -2,6 +2,7 @@
 import bcrypt from 'bcrypt';
 import prisma from '../../lib/prisma';
 import type { Role } from '@secureexam/shared-types';
+import { NotFoundError } from '../../lib/authz';
 
 export async function listUsers(schoolId: string, role?: Role) {
   return prisma.user.findMany({
@@ -11,11 +12,16 @@ export async function listUsers(schoolId: string, role?: Role) {
   });
 }
 
-export async function getUser(id: string) {
-  return prisma.user.findUnique({
-    where: { id },
+export async function getUser(id: string, schoolId: string) {
+  return prisma.user.findFirst({
+    where: { id, schoolId },
     select: { id: true, email: true, name: true, role: true, schoolId: true, createdAt: true },
   });
+}
+
+async function assertUserInSchool(id: string, schoolId: string) {
+  const u = await prisma.user.findFirst({ where: { id, schoolId }, select: { id: true } });
+  if (!u) throw new NotFoundError();
 }
 
 export async function createUser(data: {
@@ -38,7 +44,12 @@ export async function createUser(data: {
   });
 }
 
-export async function updateUser(id: string, data: { name?: string; email?: string }) {
+export async function updateUser(
+  id: string,
+  schoolId: string,
+  data: { name?: string; email?: string }
+) {
+  await assertUserInSchool(id, schoolId);
   return prisma.user.update({
     where: { id },
     data,
@@ -46,6 +57,7 @@ export async function updateUser(id: string, data: { name?: string; email?: stri
   });
 }
 
-export async function deleteUser(id: string) {
+export async function deleteUser(id: string, schoolId: string) {
+  await assertUserInSchool(id, schoolId);
   return prisma.user.delete({ where: { id } });
 }

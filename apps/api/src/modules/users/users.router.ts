@@ -23,11 +23,24 @@ router.get('/', isAdmin, async (req: Request, res: Response) => {
 
 // GET /api/v1/users/:id
 router.get('/:id', async (req: Request, res: Response) => {
-  // Users can view themselves; admins can view anyone in their school
-  const user = await getUser(req.params.id);
-  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
-  if (user.id !== req.user.sub && req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
-    res.status(403).json({ error: 'Forbidden' }); return;
+  // Self-fetch always allowed; otherwise must be admin in same school
+  if (req.params.id === req.user.sub) {
+    const user = await getUser(req.params.id, req.user.schoolId!);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    res.json({ data: user });
+    return;
+  }
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(req.user.role)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  const user = await getUser(req.params.id, req.user.schoolId!);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
   }
   res.json({ data: user });
 });
@@ -35,12 +48,23 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/v1/users
 router.post('/', isAdmin, async (req: Request, res: Response) => {
   const parsed = createUserSchema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() }); return; }
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
+    return;
+  }
+  // Admins can only create users in their own school
+  if (req.user.role !== 'SUPER_ADMIN' && parsed.data.schoolId !== req.user.schoolId) {
+    res.status(403).json({ error: 'Cannot create users in another school' });
+    return;
+  }
   try {
     const user = await createUser(parsed.data);
     res.status(201).json({ data: user });
   } catch (err: any) {
-    if (err.code === 'P2002') { res.status(409).json({ error: 'Email already in use' }); return; }
+    if (err.code === 'P2002') {
+      res.status(409).json({ error: 'Email already in use' });
+      return;
+    }
     throw err;
   }
 });
@@ -48,16 +72,33 @@ router.post('/', isAdmin, async (req: Request, res: Response) => {
 // PUT /api/v1/users/:id
 router.put('/:id', async (req: Request, res: Response) => {
   if (req.params.id !== req.user.sub && !['ADMIN', 'SUPER_ADMIN'].includes(req.user.role)) {
-    res.status(403).json({ error: 'Forbidden' }); return;
+    res.status(403).json({ error: 'Forbidden' });
+    return;
   }
-  const user = await updateUser(req.params.id, req.body);
-  res.json({ data: user });
+  try {
+    const user = await updateUser(req.params.id, req.user.schoolId!, req.body);
+    res.json({ data: user });
+  } catch (err: any) {
+    if (err?.status === 404 || err?.name === 'NotFoundError') {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    throw err;
+  }
 });
 
 // DELETE /api/v1/users/:id
 router.delete('/:id', isAdmin, async (req: Request, res: Response) => {
-  await deleteUser(req.params.id);
-  res.json({ data: { message: 'User deleted' } });
+  try {
+    await deleteUser(req.params.id, req.user.schoolId!);
+    res.json({ data: { message: 'User deleted' } });
+  } catch (err: any) {
+    if (err?.status === 404 || err?.name === 'NotFoundError') {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    throw err;
+  }
 });
 
 export default router;

@@ -20,6 +20,21 @@ async function main() {
   });
   console.log('✅ School:', school.name);
 
+  // ── Super Admin (no school — platform-wide) ──
+  const superAdminPassword = await bcrypt.hash('superadmin123', 12);
+  const superAdmin = await prisma.user.upsert({
+    where: { email: 'superadmin@demo.school.edu' },
+    update: {},
+    create: {
+      email: 'superadmin@demo.school.edu',
+      passwordHash: superAdminPassword,
+      name: 'Platform Owner',
+      role: Role.SUPER_ADMIN,
+      schoolId: null,
+    },
+  });
+  console.log('✅ Super Admin:', superAdmin.email);
+
   // ── Admin ──
   const adminPassword = await bcrypt.hash('admin123', 12);
   const admin = await prisma.user.upsert({
@@ -220,6 +235,7 @@ async function main() {
 
   console.log('\n🎉 Seed complete!\n');
   console.log('Demo accounts:');
+  console.log('  Super:   superadmin@demo.school.edu / superadmin123');
   console.log('  Admin:   admin@demo.school.edu   / admin123');
   console.log('  Teacher: teacher@demo.school.edu / teacher123');
   console.log('  Student: student1@demo.school.edu / student123');

@@ -25,16 +25,6 @@ interface ReviewItem {
 
 interface Feedback { text: string; aiSuggested?: string }
 interface Certificate { id: string; percentage: number; issuedAt: string }
-  correctIds?: string[] | null;
-  rubric?: string | null;
-  maxPoints: number;
-  answer?: {
-    selectedIds?: string[];
-    textAnswer?: string;
-    isCorrect: boolean | null;
-    points: number | null;
-  } | null;
-}
 
 interface ReviewData {
   session: { id: string; status: string; submittedAt: string; violationCount: number; timeTaken: number | null };

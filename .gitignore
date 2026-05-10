@@ -36,5 +36,11 @@ Thumbs.db
 pgdata/
 redisdata/
 
+# Redis daemon snapshot file (created by `redis-server --daemonize` in dev)
+dump.rdb
+
 # TypeScript
 *.tsbuildinfo
+
+# Test artifacts / coverage
+coverage/

@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@secureexam/shared-frontend": "*",
     "@secureexam/shared-types": "*",
     "axios": "^1.6.5",
     "react": "^18.2.0",

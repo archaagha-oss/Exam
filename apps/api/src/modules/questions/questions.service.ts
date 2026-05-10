@@ -1,5 +1,6 @@
 // apps/api/src/modules/questions/questions.service.ts
 import prisma from '../../lib/prisma';
+import { paginate, toPage } from '../../lib/pagination';
 
 export interface CreateQuestionInput {
   type: string;
@@ -14,9 +15,17 @@ export interface CreateQuestionInput {
 
 export async function listQuestions(
   schoolId: string,
-  filters: { type?: string; tags?: string; difficulty?: string; search?: string }
+  filters: {
+    type?: string;
+    tags?: string;
+    difficulty?: string;
+    search?: string;
+    cursor?: string;
+    take?: number;
+  }
 ) {
-  return prisma.question.findMany({
+  const take = Math.max(1, Math.min(200, Number(filters.take) || 50));
+  const rows = await prisma.question.findMany({
     where: {
       schoolId,
       ...(filters.type ? { type: filters.type as any } : {}),
@@ -25,14 +34,20 @@ export async function listQuestions(
       ...(filters.search ? { body: { contains: filters.search, mode: 'insensitive' } } : {}),
     },
     orderBy: { createdAt: 'desc' },
+    ...paginate({ cursor: filters.cursor, take }),
   });
+  return toPage(rows, take);
 }
 
-export async function getQuestion(id: string) {
-  return prisma.question.findUnique({ where: { id } });
+export async function getQuestion(id: string, schoolId: string) {
+  return prisma.question.findFirst({ where: { id, schoolId } });
 }
 
-export async function createQuestion(createdBy: string, schoolId: string, data: CreateQuestionInput) {
+export async function createQuestion(
+  createdBy: string,
+  schoolId: string,
+  data: CreateQuestionInput
+) {
   return prisma.question.create({
     data: {
       createdBy,
@@ -49,7 +64,22 @@ export async function createQuestion(createdBy: string, schoolId: string, data: 
   });
 }
 
-export async function updateQuestion(id: string, data: Partial<CreateQuestionInput>) {
+async function assertQuestionInSchool(id: string, schoolId: string) {
+  const q = await prisma.question.findFirst({ where: { id, schoolId }, select: { id: true } });
+  if (!q) {
+    const e: any = new Error('Question not found');
+    e.status = 404;
+    e.name = 'NotFoundError';
+    throw e;
+  }
+}
+
+export async function updateQuestion(
+  id: string,
+  schoolId: string,
+  data: Partial<CreateQuestionInput>
+) {
+  await assertQuestionInSchool(id, schoolId);
   return prisma.question.update({
     where: { id },
     data: {
@@ -65,6 +95,7 @@ export async function updateQuestion(id: string, data: Partial<CreateQuestionInp
   });
 }
 
-export async function deleteQuestion(id: string) {
+export async function deleteQuestion(id: string, schoolId: string) {
+  await assertQuestionInSchool(id, schoolId);
   return prisma.question.delete({ where: { id } });
 }

@@ -42,6 +42,8 @@ model User {
   senConfigured   StudentAccessArrangement[] @relation("SENCOConfig")
   examInvites     ExamInvite[] @relation("StudentInvites")
 
+  @@index([schoolId])
+  @@index([role, schoolId])
   @@map("users")
 }
 
@@ -91,6 +93,7 @@ model Class {
   teachers ClassTeacher[]
   exams    ExamAssignment[]
 
+  @@index([schoolId])
   @@map("classes")
 }
 
@@ -140,6 +143,9 @@ model Question {
 
   examItems ExamItem[]
 
+  @@index([schoolId])
+  @@index([schoolId, type])
+  @@index([createdBy])
   @@map("questions")
 }
 
@@ -191,6 +197,9 @@ model Exam {
   pools       ExamPool[]
   invites     ExamInvite[]
 
+  @@index([schoolId])
+  @@index([schoolId, status])
+  @@index([teacherId])
   @@map("exams")
 }
 
@@ -278,6 +287,8 @@ model ExamSession {
   deviceAlerts DeviceAlert[]
 
   @@unique([examId, studentId])
+  @@index([studentId])
+  @@index([examId, status])
   @@map("exam_sessions")
 }
 
@@ -316,6 +327,8 @@ model Violation {
   description String?
   occurredAt  DateTime      @default(now())
 
+  @@index([sessionId])
+  @@index([occurredAt])
   @@map("violations")
 }
 

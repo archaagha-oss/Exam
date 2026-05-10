@@ -1,7 +1,7 @@
 // apps/api/src/modules/auth/auth.router.ts
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { login, refresh } from './auth.service';
+import { login, refresh, logout } from './auth.service';
 
 const router = Router();
 
@@ -56,8 +56,10 @@ router.post('/refresh', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/v1/auth/logout
-router.post('/logout', (_req: Request, res: Response) => {
+// POST /api/v1/auth/logout — revoke the refresh-token family server-side too
+router.post('/logout', async (req: Request, res: Response) => {
+  const token = req.cookies?.refreshToken || req.body?.refreshToken;
+  await logout(token);
   res.clearCookie('refreshToken').json({ data: { message: 'Logged out' } });
 });
 

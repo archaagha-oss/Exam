@@ -9,7 +9,9 @@ router.use(authenticate);
 
 function escapeCSV(val: any): string {
   if (val == null) return '';
-  const str = String(val);
+  let str = String(val);
+  // Defang spreadsheet formulas: leading =, +, -, @, tab, CR
+  if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -21,7 +23,7 @@ function toCSV(rows: object[]): string {
   const headers = Object.keys(rows[0]);
   const lines = [
     headers.join(','),
-    ...rows.map(r => headers.map(h => escapeCSV((r as any)[h])).join(',')),
+    ...rows.map((r) => headers.map((h) => escapeCSV((r as any)[h])).join(',')),
   ];
   return lines.join('\n');
 }
@@ -29,10 +31,14 @@ function toCSV(rows: object[]): string {
 // GET /api/v1/exports/exams/:id/results.csv
 router.get('/exams/:id/results.csv', isTeacher, async (req: Request, res: Response) => {
   const allowed = await canProctorExam(req.user.sub, req.user.role, req.params.id);
-  if (!allowed) { res.status(403).json({ error: 'Access denied' }); return; }
+  if (!allowed) {
+    res.status(403).json({ error: 'Access denied' });
+    return;
+  }
 
-  const exam = await prisma.exam.findUnique({
-    where: { id: req.params.id },
+  // Tenant scope: also verify the exam belongs to caller's school
+  const exam = await prisma.exam.findFirst({
+    where: { id: req.params.id, schoolId: req.user.schoolId! },
     include: {
       sessions: {
         include: {
@@ -41,28 +47,35 @@ router.get('/exams/:id/results.csv', isTeacher, async (req: Request, res: Respon
           answers: true,
         },
       },
-      items: { include: { question: { select: { body: true, points: true } } }, orderBy: { order: 'asc' } },
+      items: {
+        include: { question: { select: { body: true, points: true } } },
+        orderBy: { order: 'asc' },
+      },
     },
   });
 
-  if (!exam) { res.status(404).json({ error: 'Exam not found' }); return; }
+  if (!exam) {
+    res.status(404).json({ error: 'Exam not found' });
+    return;
+  }
 
-  const rows = exam.sessions.map(s => {
-    const timeTaken = s.startedAt && s.submittedAt
-      ? Math.round((new Date(s.submittedAt).getTime() - new Date(s.startedAt).getTime()) / 1000)
-      : null;
+  const rows = exam.sessions.map((s) => {
+    const timeTaken =
+      s.startedAt && s.submittedAt
+        ? Math.round((new Date(s.submittedAt).getTime() - new Date(s.startedAt).getTime()) / 1000)
+        : null;
     const pct = s.totalPoints ? Math.round(((s.score ?? 0) / s.totalPoints) * 100) : null;
     const passed = exam.passingScore && pct !== null ? pct >= exam.passingScore : null;
 
     return {
       'Student Name': s.student.name,
       'Student Email': s.student.email,
-      'Status': s.status,
-      'Score': s.score ?? '',
+      Status: s.status,
+      Score: s.score ?? '',
       'Total Points': s.totalPoints ?? '',
-      'Percentage': pct !== null ? `${pct}%` : '',
-      'Passed': passed !== null ? (passed ? 'Yes' : 'No') : '',
-      'Violations': s.violationCount,
+      Percentage: pct !== null ? `${pct}%` : '',
+      Passed: passed !== null ? (passed ? 'Yes' : 'No') : '',
+      Violations: s.violationCount,
       'Started At': s.startedAt ? new Date(s.startedAt).toISOString() : '',
       'Submitted At': s.submittedAt ? new Date(s.submittedAt).toISOString() : '',
       'Time Taken (s)': timeTaken ?? '',
@@ -79,13 +92,18 @@ router.get('/exams/:id/results.csv', isTeacher, async (req: Request, res: Respon
 
 // GET /api/v1/exports/schools/:schoolId/users.csv  — bulk user export
 router.get('/schools/:schoolId/users.csv', isAdmin, async (req: Request, res: Response) => {
+  // Admin can only export their own school. SUPER_ADMIN can export any.
+  if (req.user.role !== 'SUPER_ADMIN' && req.params.schoolId !== req.user.schoolId) {
+    res.status(403).json({ error: 'Cannot export users from another school' });
+    return;
+  }
   const users = await prisma.user.findMany({
     where: { schoolId: req.params.schoolId },
     select: { name: true, email: true, role: true, isActive: true, createdAt: true },
     orderBy: [{ role: 'asc' }, { name: 'asc' }],
   });
 
-  const rows = users.map(u => ({
+  const rows = users.map((u) => ({
     Name: u.name,
     Email: u.email,
     Role: u.role,
