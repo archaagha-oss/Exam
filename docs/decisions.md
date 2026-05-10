@@ -17,6 +17,10 @@ delete or rewrite history — supersede with a new ID and link.
 
 ### Context
 
+*Pre-decision state, preserved for the record. The schema and code below
+describe what was true before cycle 2.0a; see Consequences for what is true
+now.*
+
 The schema today (`apps/api/prisma/schema.prisma`) has `Role.SUPER_ADMIN`
 with `User.schoolId` nullable, so a SUPER_ADMIN can have no school
 affiliation. Routes like `/platform/schools` allow that role to create,
@@ -232,6 +236,9 @@ and we don't certify against any specific LMS.
 - **Implemented:** Cycle 2.0b (branch `claude/stage-2-cycle-2-0b-console-merge`)
 
 ### Context
+
+*Pre-decision state, preserved for the record. The repo state below is
+what existed before cycle 2.0b; see Consequences for what's true now.*
 
 Today the repo has **five frontend portals**: `student`, `teacher`, `admin`,
 `superadmin`, plus the `api`. The teacher and admin portals share most of
