@@ -12,6 +12,7 @@ import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { authenticate } from '../../middleware/auth';
 import { platformClient } from '../../lib/tenant';
+import { auditFromReq } from '../../lib/examAccess';
 
 const router = Router();
 
@@ -87,6 +88,13 @@ router.post('/schools', async (req: Request, res: Response) => {
     include: { users: { select: { id: true, email: true, name: true, role: true } } },
   });
 
+  // Cycle 2.0f: PLATFORM_ADMIN provisioning is implicitly cross-tenant.
+  // auditFromReq tags the row with impersonation=true automatically.
+  await auditFromReq(req, 'SCHOOL_PROVISIONED', 'School', school.id, {
+    targetSchoolId: school.id,
+    meta: { name: school.name, domain: school.domain, plan, adminEmail: adminEmail.toLowerCase() },
+  });
+
   res.status(201).json({
     data: {
       school: { id: school.id, name: school.name },
@@ -143,6 +151,13 @@ router.delete('/schools/:id', async (req: Request, res: Response) => {
   if (parsed.data.confirmName !== school.name) {
     res.status(400).json({ error: 'School name confirmation does not match' }); return;
   }
+
+  // Cycle 2.0f: audit BEFORE the delete so the row exists in the actor's
+  // accessible logs even after cascade clears related users / exams.
+  await auditFromReq(req, 'SCHOOL_DELETED', 'School', req.params.id, {
+    targetSchoolId: req.params.id,
+    meta: { name: school.name },
+  });
 
   // Cascade delete is handled by DB constraints
   await platformClient.school.delete({ where: { id: req.params.id } });

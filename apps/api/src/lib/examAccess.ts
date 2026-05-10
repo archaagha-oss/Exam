@@ -89,15 +89,32 @@ export async function canManageExam(
 
 /**
  * Log an admin/teacher action to the audit table.
+ *
+ * Existing call sites continue to work — the new `actorRole`, `actorSchoolId`,
+ * `targetSchoolId`, and `impersonation` columns (cycle 2.0f) default to null
+ * / false when not supplied. The `auditFromReq` wrapper below is the
+ * preferred entry point for new writes that reach across tenants
+ * (PLATFORM_ADMIN actions, SCHOOL_ADMIN cross-school overrides), since it
+ * populates all four columns correctly.
  */
 export async function audit(
   actorId: string,
   action: string,
   targetType: string,
   targetId: string,
-  meta?: object
+  meta?: object,
+  context?: {
+    actorRole?: string | null;
+    actorSchoolId?: string | null;
+    targetSchoolId?: string | null;
+  }
 ) {
   try {
+    const impersonation = computeImpersonation(
+      context?.actorRole,
+      context?.actorSchoolId,
+      context?.targetSchoolId
+    );
     await prisma.auditLog.create({
       data: {
         actorId,
@@ -105,10 +122,56 @@ export async function audit(
         targetType,
         targetId,
         meta: meta as any,
+        actorRole: context?.actorRole ?? null,
+        actorSchoolId: context?.actorSchoolId ?? null,
+        targetSchoolId: context?.targetSchoolId ?? null,
+        impersonation,
       },
     });
   } catch {
     // audit failures should never break the main flow
     console.error(`[audit] Failed to log action ${action}`);
   }
+}
+
+/**
+ * Cycle 2.0f: write an audit entry with full impersonation metadata pulled
+ * from the request. Use this in routes that PLATFORM_ADMIN can hit (any
+ * /platform/* route, the admin overrides on /admin/*, the feature toggles)
+ * or anywhere else the action could legitimately reach across tenants.
+ *
+ *   await auditFromReq(req, 'EXAM_CLOSED', 'Exam', exam.id, {
+ *     targetSchoolId: exam.schoolId,
+ *     meta: { title: exam.title },
+ *   });
+ *
+ * Existing audit() callers don't need to migrate — the impersonation flag
+ * defaults to false, which is correct for tenant-scoped actions.
+ */
+export async function auditFromReq(
+  req: { user: { sub: string; role: string; schoolId?: string | null } },
+  action: string,
+  targetType: string,
+  targetId: string,
+  opts: { targetSchoolId?: string | null; meta?: object } = {}
+) {
+  return audit(req.user.sub, action, targetType, targetId, opts.meta, {
+    actorRole: req.user.role,
+    actorSchoolId: req.user.schoolId ?? null,
+    targetSchoolId: opts.targetSchoolId ?? null,
+  });
+}
+
+function computeImpersonation(
+  actorRole: string | null | undefined,
+  actorSchoolId: string | null | undefined,
+  targetSchoolId: string | null | undefined
+): boolean {
+  // PLATFORM_ADMIN reaching INTO any specific tenant counts as impersonation.
+  // Their own actions on the platform-wide tables (no targetSchoolId) do not.
+  if (actorRole === 'PLATFORM_ADMIN' && targetSchoolId) return true;
+  // Anyone else with a mismatched schoolId. Should not happen in normal flow
+  // (the cycle 1.1a tenant guards prevent it) but we still flag it if it does.
+  if (actorSchoolId && targetSchoolId && actorSchoolId !== targetSchoolId) return true;
+  return false;
 }
