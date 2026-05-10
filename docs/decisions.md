@@ -344,8 +344,9 @@ and probably a different conversation about who's buying.
 - ✓ Load-test scaffolding (`scripts/load-test/`) targets 5k concurrent
   WS + 10k req/s of HTTP autosave so we can negotiate with numbers.
 - ✓ Redis pub/sub WS fan-out (cycle 3.0b).
-- 〇 HTTP autosave path becomes authoritative; WS `session:answer`
-  becomes optimistic-only (cycle 3.0c).
+- ✓ REST autosave authoritative; WS `session:answer` reduced to a no-op
+  stub for backwards compat (cycle 3.0c). REST handler now also pushes
+  `proctor:update` via the broadcaster.
 - 〇 Postgres read-replica wiring (deferred — D7 Option 2 doesn't need
   it; if peak-day numbers from the load test push past 5k, revisit).
 
