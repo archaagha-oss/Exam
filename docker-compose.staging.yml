@@ -99,8 +99,7 @@ services:
       - ./nginx/dev-ssl:/etc/nginx/ssl:ro
       - ./nginx/certbot-www:/var/www/certbot:ro
       - student_build_staging:/var/www/student:ro
-      - teacher_build_staging:/var/www/teacher:ro
-      - admin_build_staging:/var/www/admin:ro
+      - console_build_staging:/var/www/console:ro
       - superadmin_build_staging:/var/www/superadmin:ro
     depends_on:
       api:
@@ -125,8 +124,7 @@ volumes:
   pgdata_staging:
   redisdata_staging:
   student_build_staging:
-  teacher_build_staging:
-  admin_build_staging:
+  console_build_staging:
   superadmin_build_staging:
 
 networks:

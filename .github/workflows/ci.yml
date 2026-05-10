@@ -107,21 +107,13 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/secureexam-student:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/secureexam-student:latest
 
-      - name: Build and push Teacher portal
+      - name: Build and push School Console (was Teacher + Admin, merged in cycle 2.0b)
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile.teacher
+          file: docker/Dockerfile.console
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/secureexam-teacher:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/secureexam-teacher:latest
-
-      - name: Build and push School Admin portal
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/Dockerfile.admin
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/secureexam-admin:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/secureexam-admin:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/secureexam-console:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/secureexam-console:latest
 
       - name: Build and push Platform Admin portal
         uses: docker/build-push-action@v5
