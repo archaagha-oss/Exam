@@ -39,11 +39,20 @@ router.get('/exams/:id', async (req: Request, res: Response) => {
     where: { examId: req.params.id, submittedAt: { not: null } },
     select: { id: true, studentId: true, student: { select: { name: true, email: true } } },
   });
-  const out: { sessionId: string; student: any; findings: any[] }[] = [];
-  for (const s of sessions) {
-    const findings = await analyzeSession(s.id);
-    if (findings.length) out.push({ sessionId: s.id, student: s.student, findings });
-  }
+
+  // Cycle 2.1b / audit P2: was a sequential await over `sessions`. For an
+  // exam with 100+ students that's 100+ sequential round-trips — easily a
+  // multi-second blocking response. Promise.all parallelises against the
+  // Prisma connection pool (10 by default); a hundred concurrent
+  // analyzeSession calls queue cheaply rather than serializing.
+  const analyses = await Promise.all(
+    sessions.map(async (s) => ({
+      sessionId: s.id,
+      student: s.student,
+      findings: await analyzeSession(s.id),
+    }))
+  );
+  const out = analyses.filter((a) => a.findings.length > 0);
   res.json({ data: out });
 });
 
