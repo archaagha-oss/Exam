@@ -23,7 +23,7 @@ router.get('/my', isStudent, async (req: Request, res: Response) => {
 
 // Proctor live snapshot — before /:id
 router.get('/exam/:examId/live', isTeacher, async (req: Request, res: Response) => {
-  const allowed = await canProctorExam(req.user.sub, req.user.role, req.params.examId);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!allowed) {
     res.status(403).json({ error: 'Access denied to this exam' });
     return;
@@ -188,7 +188,7 @@ async function requireProctorAccess(
     res.status(404).json({ error: 'Session not found' });
     return false;
   }
-  const allowed = await canProctorExam(req.user.sub, req.user.role, examId);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, examId);
   if (!allowed) {
     res.status(403).json({ error: 'Access denied to this exam' });
     return false;

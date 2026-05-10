@@ -83,7 +83,7 @@ export function setupWebSocket(server: http.Server) {
     if (examId && ['TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       // Phase 3: enforce access control before joining proctor room
       const { canProctorExam } = await import('../lib/examAccess');
-      const allowed = await canProctorExam(user.sub, user.role, examId);
+      const allowed = await canProctorExam(user.sub, user.role, user.schoolId, examId);
       if (!allowed) {
         ws.close(4003, 'Access denied to this exam');
         return;

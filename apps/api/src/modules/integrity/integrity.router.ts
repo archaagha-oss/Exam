@@ -18,7 +18,7 @@ router.get('/sessions/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Session not found' });
     return;
   }
-  const ok = await canProctorExam(req.user.sub, req.user.role, session.examId);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, session.examId);
   if (!ok) {
     res.status(403).json({ error: 'Access denied to this exam' });
     return;
@@ -30,7 +30,7 @@ router.get('/sessions/:id', async (req: Request, res: Response) => {
 
 // GET /api/v1/integrity/exams/:id  — aggregate over all submitted sessions
 router.get('/exams/:id', async (req: Request, res: Response) => {
-  const ok = await canProctorExam(req.user.sub, req.user.role, req.params.id);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!ok) {
     res.status(403).json({ error: 'Access denied to this exam' });
     return;

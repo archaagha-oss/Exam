@@ -10,7 +10,7 @@ router.use(authenticate, isTeacher);
 
 // GET /api/v1/proctors/exams/:examId  — list co-proctors for an exam
 router.get('/exams/:examId', async (req: Request, res: Response) => {
-  const allowed = await canProctorExam(req.user.sub, req.user.role, req.params.examId);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!allowed) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const proctors = await prisma.examProctor.findMany({
@@ -26,7 +26,7 @@ router.get('/exams/:examId', async (req: Request, res: Response) => {
 
 // POST /api/v1/proctors/exams/:examId  — invite a co-proctor by email
 router.post('/exams/:examId', async (req: Request, res: Response) => {
-  const allowed = await canManageExam(req.user.sub, req.user.role, req.params.examId);
+  const allowed = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!allowed) { res.status(403).json({ error: 'Only the exam owner can invite co-proctors' }); return; }
 
   const schema = z.object({ email: z.string().email() });
@@ -77,7 +77,7 @@ router.post('/exams/:examId', async (req: Request, res: Response) => {
 
 // DELETE /api/v1/proctors/exams/:examId/:teacherId  — remove a co-proctor
 router.delete('/exams/:examId/:teacherId', async (req: Request, res: Response) => {
-  const allowed = await canManageExam(req.user.sub, req.user.role, req.params.examId);
+  const allowed = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!allowed) { res.status(403).json({ error: 'Only the exam owner can remove co-proctors' }); return; }
 
   await prisma.examProctor.deleteMany({

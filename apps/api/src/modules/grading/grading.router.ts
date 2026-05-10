@@ -14,7 +14,7 @@ router.use(authenticate, isTeacher);
  * Groups by student session so the teacher grades one student at a time.
  */
 router.get('/exams/:examId/pending', async (req: Request, res: Response) => {
-  const allowed = await canProctorExam(req.user.sub, req.user.role, req.params.examId);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!allowed) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const sessions = await prisma.examSession.findMany({
@@ -75,7 +75,7 @@ router.get('/exams/:examId/pending', async (req: Request, res: Response) => {
  * Full grading view for one student — all question types, with context.
  */
 router.get('/exams/:examId/sessions/:sessionId', async (req: Request, res: Response) => {
-  const allowed = await canProctorExam(req.user.sub, req.user.role, req.params.examId);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!allowed) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const session = await prisma.examSession.findUnique({
@@ -181,7 +181,7 @@ router.post('/answers/:answerId', async (req: Request, res: Response) => {
 
   if (!answer) { res.status(404).json({ error: 'Answer not found' }); return; }
 
-  const allowed = await canProctorExam(req.user.sub, req.user.role, answer.session.exam.id);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, answer.session.exam.id);
   if (!allowed) { res.status(403).json({ error: 'Access denied' }); return; }
 
   // Clamp points to max
@@ -218,7 +218,7 @@ router.post('/sessions/:sessionId/finalize', async (req: Request, res: Response)
   });
   if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
 
-  const allowed = await canProctorExam(req.user.sub, req.user.role, session.exam.id);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, session.exam.id);
   if (!allowed) { res.status(403).json({ error: 'Access denied' }); return; }
 
   // Zero out any ungraded manual answers

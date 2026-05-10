@@ -3,7 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, isTeacher, isStudent } from '../../middleware/auth';
-import { canProctorExam } from '../../lib/examAccess';
+import { canProctorExam, tenantScope } from '../../lib/examAccess';
 import prisma from '../../lib/prisma';
 
 const router = Router();
@@ -13,7 +13,7 @@ const router = Router();
 // GET /api/v1/assessment/exams/:id/blueprint
 // Shows tag coverage, difficulty spread, question type balance for the exam
 router.get('/exams/:id/blueprint', authenticate, isTeacher, async (req: Request, res: Response) => {
-  const ok = await canProctorExam(req.user.sub, req.user.role, req.params.id);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!ok) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const exam = await prisma.exam.findUnique({
@@ -83,7 +83,7 @@ router.get('/exams/:id/blueprint', authenticate, isTeacher, async (req: Request,
 // GET /api/v1/assessment/exams/:id/answer-distribution
 // Per-question, per-option breakdown: count, %, avg time
 router.get('/exams/:id/answer-distribution', authenticate, isTeacher, async (req: Request, res: Response) => {
-  const ok = await canProctorExam(req.user.sub, req.user.role, req.params.id);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!ok) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const exam = await prisma.exam.findUnique({
@@ -163,7 +163,7 @@ router.get('/exams/:id/answer-distribution', authenticate, isTeacher, async (req
 // GET /api/v1/assessment/exams/:id/tag-performance
 // For each tag in the exam, shows avg score across all students
 router.get('/exams/:id/tag-performance', authenticate, isTeacher, async (req: Request, res: Response) => {
-  const ok = await canProctorExam(req.user.sub, req.user.role, req.params.id);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!ok) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const exam = await prisma.exam.findUnique({
@@ -299,7 +299,7 @@ router.post('/sessions/:id/feedback', authenticate, isTeacher, async (req: Reque
   });
   if (!session) { res.status(404).json({ error: 'Not found' }); return; }
 
-  const ok = await canProctorExam(req.user.sub, req.user.role, session.examId);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, session.examId);
   if (!ok) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const feedback = await prisma.sessionFeedback.upsert({
@@ -325,7 +325,7 @@ router.post('/sessions/:id/feedback/ai', authenticate, isTeacher, async (req: Re
   });
   if (!session) { res.status(404).json({ error: 'Not found' }); return; }
 
-  const ok = await canProctorExam(req.user.sub, req.user.role, session.exam.id);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, session.exam.id);
   if (!ok) { res.status(403).json({ error: 'Access denied' }); return; }
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -402,9 +402,21 @@ router.get('/sessions/:id/feedback', authenticate, isStudent, async (req: Reques
 // ── CERTIFICATES ──────────────────────────────────────────────────────────
 
 // GET /api/v1/assessment/sessions/:id/certificate
-// Returns certificate data (student or teacher)
+// Returns certificate data — student gets only their own; teacher/admin only
+// for sessions in their own school; super_admin gets any.
 router.get('/sessions/:id/certificate', authenticate, async (req: Request, res: Response) => {
-  const cert = await prisma.examCertificate.findUnique({ where: { sessionId: req.params.id } });
+  const session = await prisma.examSession.findFirst({
+    where: {
+      id: req.params.id,
+      ...(req.user.role === 'STUDENT'
+        ? { studentId: req.user.sub }
+        : { exam: tenantScope(req.user.role, req.user.schoolId) }),
+    },
+    select: { id: true },
+  });
+  if (!session) { res.status(404).json({ error: 'No certificate — exam not passed or not yet graded' }); return; }
+
+  const cert = await prisma.examCertificate.findUnique({ where: { sessionId: session.id } });
   if (!cert) { res.status(404).json({ error: 'No certificate — exam not passed or not yet graded' }); return; }
   res.json({ data: cert });
 });

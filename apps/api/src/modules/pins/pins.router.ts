@@ -23,7 +23,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     return;
   }
 
-  const allowed = await canManageExam(req.user.sub, req.user.role, parsed.data.examId);
+  const allowed = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, parsed.data.examId);
   if (!allowed) {
     res.status(403).json({ error: 'Only the exam owner can generate PINs' });
     return;
@@ -89,6 +89,19 @@ router.post('/generate', async (req: Request, res: Response) => {
 });
 
 router.get('/:examId', async (req: Request, res: Response) => {
+  // PIN metadata reveals exam usage — gate behind canManageExam (which now
+  // includes tenant scoping after the cycle 1.1a fix).
+  const allowed = await canManageExam(
+    req.user.sub,
+    req.user.role,
+    req.user.schoolId,
+    req.params.examId
+  );
+  if (!allowed) {
+    res.status(404).json({ error: 'Exam not found' });
+    return;
+  }
+
   const pins = await prisma.examPin.findMany({
     where: { examId: req.params.examId },
     select: { purpose: true, createdAt: true, expiresAt: true, usedAt: true },

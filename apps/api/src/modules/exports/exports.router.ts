@@ -30,7 +30,7 @@ function toCSV(rows: object[]): string {
 
 // GET /api/v1/exports/exams/:id/results.csv
 router.get('/exams/:id/results.csv', isTeacher, async (req: Request, res: Response) => {
-  const allowed = await canProctorExam(req.user.sub, req.user.role, req.params.id);
+  const allowed = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!allowed) {
     res.status(403).json({ error: 'Access denied' });
     return;

@@ -2,6 +2,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, isAdmin, isStudent } from '../../middleware/auth';
+import { tenantScope } from '../../lib/examAccess';
 import prisma from '../../lib/prisma';
 
 const router = Router();
@@ -34,10 +35,20 @@ router.get('/arrangements', authenticate, isAdmin, async (req: Request, res: Res
 
 // GET /api/v1/sen/arrangements/:studentId  — get one student's arrangement
 router.get('/arrangements/:studentId', authenticate, async (req: Request, res: Response) => {
-  // Students can read their own; admins/teachers can read anyone in school
-  if (req.user.role === 'STUDENT' && req.user.sub !== req.params.studentId) {
-    res.status(403).json({ error: 'Forbidden' }); return;
+  // Students can read their own; admins/teachers can read anyone in same school.
+  if (req.user.role === 'STUDENT') {
+    if (req.user.sub !== req.params.studentId) {
+      res.status(403).json({ error: 'Forbidden' }); return;
+    }
+  } else {
+    // Verify the student exists in the caller's school before disclosing the row.
+    const student = await prisma.user.findFirst({
+      where: { id: req.params.studentId, ...tenantScope(req.user.role, req.user.schoolId) },
+      select: { id: true },
+    });
+    if (!student) { res.status(404).json({ error: 'Student not found' }); return; }
   }
+
   const arr = await prisma.studentAccessArrangement.findUnique({
     where: { studentId: req.params.studentId },
     include: { configuredBy: { select: { id: true, name: true } } },
@@ -87,7 +98,13 @@ router.put('/arrangements/:studentId', authenticate, isAdmin, async (req: Reques
 
 // DELETE /api/v1/sen/arrangements/:studentId  — remove arrangement
 router.delete('/arrangements/:studentId', authenticate, isAdmin, async (req: Request, res: Response) => {
-  await prisma.studentAccessArrangement.deleteMany({ where: { studentId: req.params.studentId } });
+  const student = await prisma.user.findFirst({
+    where: { id: req.params.studentId, ...tenantScope(req.user.role, req.user.schoolId) },
+    select: { id: true },
+  });
+  if (!student) { res.status(404).json({ error: 'Student not found' }); return; }
+
+  await prisma.studentAccessArrangement.deleteMany({ where: { studentId: student.id } });
   res.json({ data: { removed: true } });
 });
 
@@ -178,8 +195,21 @@ router.post('/sessions/:sessionId/rest-break/end', authenticate, isStudent, asyn
 
 // GET /api/v1/sen/sessions/:sessionId/rest-breaks  — break log for this session
 router.get('/sessions/:sessionId/rest-breaks', authenticate, async (req: Request, res: Response) => {
+  // Tenant scope: students can only see their own session; teachers/admins
+  // can see sessions in their school; super_admin sees any.
+  const session = await prisma.examSession.findFirst({
+    where: {
+      id: req.params.sessionId,
+      ...(req.user.role === 'STUDENT'
+        ? { studentId: req.user.sub }
+        : { exam: tenantScope(req.user.role, req.user.schoolId) }),
+    },
+    select: { id: true },
+  });
+  if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+
   const breaks = await prisma.restBreakLog.findMany({
-    where: { sessionId: req.params.sessionId },
+    where: { sessionId: session.id },
     orderBy: { startedAt: 'asc' },
   });
   res.json({ data: breaks });

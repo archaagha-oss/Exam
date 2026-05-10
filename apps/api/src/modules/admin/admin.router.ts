@@ -3,7 +3,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { authenticate, isAdmin } from '../../middleware/auth';
-import { audit } from '../../lib/examAccess';
+import { audit, tenantScope } from '../../lib/examAccess';
 import prisma from '../../lib/prisma';
 
 const router = Router();
@@ -220,6 +220,21 @@ router.post('/classes/:id/members', async (req: Request, res: Response) => {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid input' }); return; }
 
+  const cls = await prisma.class.findFirst({
+    where: { id: req.params.id, ...tenantScope(req.user.role, req.user.schoolId) },
+    select: { id: true, schoolId: true },
+  });
+  if (!cls) { res.status(404).json({ error: 'Class not found' }); return; }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: parsed.data.userIds }, schoolId: cls.schoolId },
+    select: { id: true },
+  });
+  if (users.length !== parsed.data.userIds.length) {
+    res.status(400).json({ error: 'One or more users do not belong to this school' });
+    return;
+  }
+
   if (parsed.data.memberType === 'student') {
     await prisma.classStudent.createMany({
       data: parsed.data.userIds.map(id => ({ classId: req.params.id, studentId: id })),
@@ -239,6 +254,12 @@ router.delete('/classes/:id/members/:userId', async (req: Request, res: Response
   const schema = z.object({ memberType: z.enum(['student', 'teacher']) });
   const parsed = schema.safeParse(req.query);
   if (!parsed.success) { res.status(400).json({ error: 'Provide ?memberType=student|teacher' }); return; }
+
+  const cls = await prisma.class.findFirst({
+    where: { id: req.params.id, ...tenantScope(req.user.role, req.user.schoolId) },
+    select: { id: true },
+  });
+  if (!cls) { res.status(404).json({ error: 'Class not found' }); return; }
 
   if (parsed.data.memberType === 'student') {
     await prisma.classStudent.deleteMany({
@@ -294,17 +315,29 @@ router.get('/stats', async (req: Request, res: Response) => {
 
 // POST /api/v1/admin/exams/:id/close
 router.post('/exams/:id/close', async (req: Request, res: Response) => {
-  const exam = await prisma.exam.update({
-    where: { id: req.params.id },
+  const exam = await prisma.exam.findFirst({
+    where: { id: req.params.id, ...tenantScope(req.user.role, req.user.schoolId) },
+    select: { id: true, title: true },
+  });
+  if (!exam) { res.status(404).json({ error: 'Exam not found' }); return; }
+
+  const updated = await prisma.exam.update({
+    where: { id: exam.id },
     data: { status: 'CLOSED' },
     select: { id: true, title: true, status: true },
   });
-  await audit(req.user.sub, 'EXAM_CLOSED', 'Exam', exam.id, { title: exam.title });
-  res.json({ data: exam });
+  await audit(req.user.sub, 'EXAM_CLOSED', 'Exam', updated.id, { title: updated.title });
+  res.json({ data: updated });
 });
 
 // DELETE /api/v1/admin/proctors/:examId/:teacherId  — admin removes any co-proctor
 router.delete('/proctors/:examId/:teacherId', async (req: Request, res: Response) => {
+  const exam = await prisma.exam.findFirst({
+    where: { id: req.params.examId, ...tenantScope(req.user.role, req.user.schoolId) },
+    select: { id: true },
+  });
+  if (!exam) { res.status(404).json({ error: 'Exam not found' }); return; }
+
   await prisma.examProctor.deleteMany({
     where: { examId: req.params.examId, teacherId: req.params.teacherId },
   });
@@ -325,8 +358,11 @@ router.post('/users/:id/reset-password', async (req: Request, res: Response) => 
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Password must be at least 8 characters' }); return; }
 
-  const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, schoolId: true, name: true } });
-  if (!user || user.schoolId !== req.user.schoolId) { res.status(404).json({ error: 'User not found' }); return; }
+  const user = await prisma.user.findFirst({
+    where: { id: req.params.id, ...tenantScope(req.user.role, req.user.schoolId) },
+    select: { id: true, schoolId: true, name: true },
+  });
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
 
   const hash = await bcrypt.hash(parsed.data.newPassword, 12);
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hash } });

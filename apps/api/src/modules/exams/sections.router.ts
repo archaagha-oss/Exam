@@ -25,7 +25,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // POST /api/v1/exams/:examId/sections
 router.post('/', async (req: Request, res: Response) => {
-  const ok = await canManageExam(req.user.sub, req.user.role, req.params.examId);
+  const ok = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!ok) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const schema = z.object({
@@ -56,7 +56,7 @@ router.post('/', async (req: Request, res: Response) => {
 
 // PUT /api/v1/exams/:examId/sections/:sectionId
 router.put('/:sectionId', async (req: Request, res: Response) => {
-  const ok = await canManageExam(req.user.sub, req.user.role, req.params.examId);
+  const ok = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!ok) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const schema = z.object({
@@ -77,7 +77,7 @@ router.put('/:sectionId', async (req: Request, res: Response) => {
 
 // DELETE /api/v1/exams/:examId/sections/:sectionId
 router.delete('/:sectionId', async (req: Request, res: Response) => {
-  const ok = await canManageExam(req.user.sub, req.user.role, req.params.examId);
+  const ok = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!ok) { res.status(403).json({ error: 'Forbidden' }); return; }
   await prisma.examSection.delete({ where: { id: req.params.sectionId } });
   res.json({ data: { deleted: true } });
@@ -87,7 +87,7 @@ router.delete('/:sectionId', async (req: Request, res: Response) => {
 
 // POST /api/v1/exams/:examId/pools
 router.post('/pools', async (req: Request, res: Response) => {
-  const ok = await canManageExam(req.user.sub, req.user.role, req.params.examId);
+  const ok = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!ok) { res.status(403).json({ error: 'Forbidden' }); return; }
 
   const schema = z.object({
@@ -141,7 +141,7 @@ router.post('/pools', async (req: Request, res: Response) => {
 
 // DELETE /api/v1/exams/:examId/pools/:poolId
 router.delete('/pools/:poolId', async (req: Request, res: Response) => {
-  const ok = await canManageExam(req.user.sub, req.user.role, req.params.examId);
+  const ok = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.examId);
   if (!ok) { res.status(403).json({ error: 'Forbidden' }); return; }
   await prisma.examPool.delete({ where: { id: req.params.poolId } });
   res.json({ data: { deleted: true } });
