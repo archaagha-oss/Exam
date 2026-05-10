@@ -1,0 +1,322 @@
+# Decisions log
+
+**Format:** lightweight ADR. One section per decision. Each has an ID,
+status, context, options considered, decision (or **OPEN** with a
+recommendation), and consequences. New decisions append to the bottom; never
+delete or rewrite history — supersede with a new ID and link.
+
+**Status values:** `Proposed` · `Open` · `Decided` · `Superseded by Dn`
+
+---
+
+## D1 — `SUPER_ADMIN` role: split into vendor + customer admins
+
+- **Status:** Open (recommendation: split)
+- **Raised:** Cycle 0.2, batch 1
+- **Owner:** unassigned
+
+### Context
+
+The schema today (`apps/api/prisma/schema.prisma`) has `Role.SUPER_ADMIN`
+with `User.schoolId` nullable, so a SUPER_ADMIN can have no school
+affiliation. Routes like `/platform/schools` allow that role to create,
+suspend, or delete *any* school. This is a vendor-level capability set.
+
+Cycle 0.2 picked **the school IT lead** as the most-privileged customer-side
+role. If we hand them `SUPER_ADMIN` as it stands today, they can manage
+every other school on the platform — a cross-tenant nightmare and a clear
+contract violation (multi-tenant invariant #1 from `ARCHITECTURE.md`).
+
+### Options
+
+1. **Split into two roles** *(recommended)*
+   - `PLATFORM_ADMIN` — vendor staff only. Cross-tenant. Lives in a separate
+     locked-down portal at a non-customer subdomain. MFA-required, IP
+     allowlist, full audit-log. Replaces today's null-`schoolId`
+     `SUPER_ADMIN`.
+   - `SCHOOL_ADMIN` — replaces today's `ADMIN`, scope-locked to a single
+     `schoolId`. The IT lead's daily portal. Beefed up with SSO config,
+     bulk import, audit-log review, data-export.
+2. **Scope `SUPER_ADMIN` to a single school** — keep the name, add a
+   non-null `schoolId` constraint, demote `/platform/*` to a new
+   `PLATFORM_ADMIN`. Functionally identical to option 1 with a more
+   confusing name.
+3. **Status quo** — give school IT a `SUPER_ADMIN` account. Rejected:
+   cross-tenant breach by design.
+
+### Recommendation
+
+Option 1. The naming is clearer ("platform" = vendor, "school" = customer)
+and the migration is mechanical: rename `ADMIN` → `SCHOOL_ADMIN`, rename
+`SUPER_ADMIN` → `PLATFORM_ADMIN`, add a nullability constraint on `schoolId`
+that depends on role.
+
+### Consequences
+
+- Schema migration (Stage 1)
+- All `/platform/*` routes get a hard guard: `req.user.role === 'PLATFORM_ADMIN'`
+- All `/admin/*` routes get a hard guard: `req.user.role === 'SCHOOL_ADMIN' && req.user.schoolId === req.params.schoolId`
+- Audit-log every cross-tenant action by `PLATFORM_ADMIN` (support impersonation, etc.)
+- The current `apps/superadmin` portal becomes the vendor Platform Admin
+  portal — and inherits the audit's P0 fixes (no `localStorage` token, real
+  Dockerfile, dedicated nginx vhost on a non-customer domain).
+- See also D6 — portal consolidation depends on this split.
+
+---
+
+## D2 — Google Classroom: punt from v1
+
+- **Status:** Decided
+- **Raised:** Cycle 0.2, batch 2
+- **Owner:** product (revisit at year-1 review)
+
+### Context
+
+Cycle 0.2 LMS/SSO selection: **MS Teams for Education + Azure AD**, Canvas/
+Moodle/Schoology, and standalone email/password. **Google Classroom +
+Google Workspace SSO was explicitly not selected.**
+
+K-12 device share is roughly half Google (Chromebook-heavy US districts)
+and half Microsoft (UK/EU + US 1:1 Windows districts). Punting Google means
+we cannot land most US K-12 districts in v1.
+
+### Options
+
+1. **Punt Google entirely from v1** *(decided)* — focus engineering on a
+   single excellent SSO integration (Microsoft) rather than two mediocre ones.
+2. **Build both in v1** — rejected: doubles integration work, slows
+   everything else.
+3. **Build Google instead of Microsoft** — rejected against Cycle 0.2
+   selection.
+
+### Decision
+
+Option 1. v1 ships with Microsoft SSO + email/password fallback. Google
+Classroom integration enters the roadmap conversation at the year-1 review
+once we have signed UK/EU customers using Microsoft.
+
+### Consequences
+
+- US sales conversations explicitly say "Microsoft schools first; Google
+  schools waitlist."
+- We do not advertise Google support anywhere.
+- The schema/auth abstraction is built generic (OIDC + SCIM) so adding a
+  Google IdP later is configuration, not a new code path.
+
+---
+
+## D3 — Two-mode design system: focus + warm
+
+- **Status:** Open (recommendation: adopt)
+- **Raised:** Cycle 0.2, batch 3 (extension of brand answer)
+- **Owner:** unassigned
+
+### Context
+
+Cycle 0.2 brand selection was **Notion — calm, content-dense, friendly.**
+The student exam-taking surface is in genuine tension with that register —
+during a sit-down exam, "calm and friendly" is wrong; the right register is
+"focused, status-first, no decoration."
+
+### Options
+
+1. **One mode, Notion-warm everywhere** — risks under-serving the hot path.
+2. **Two modes sharing one token set** *(recommended)* — Notion-warm by
+   default; focus mode (Stripe-discipline) for student exam-taking. Same
+   colours, type scale tightens, chrome strips down, status surfaces become
+   omnipresent.
+3. **Two completely separate design systems** — rejected: doubles maintenance,
+   creates inconsistency at handoff points (e.g. submitting an exam takes
+   you back into Notion-warm).
+
+### Recommendation
+
+Option 2. The `shared-frontend` package already exists; adding a `mode`
+prop or theme switch at the app-shell level is a small change.
+
+### Consequences
+
+- Stage 4 (design system) builds two app-shell variants
+- Tokens stay unified in `shared-frontend`
+- All four hero workflows except student exam-taking ship in default mode
+- Clear handoff points (entering the exam, submitting) get explicit visual
+  transitions
+
+---
+
+## D4 — AI feature flag: where does it live?
+
+- **Status:** Open (recommendation: dedicated `Feature` table)
+- **Raised:** Cycle 0.2, batch 3 (AI authoring stance)
+- **Owner:** unassigned
+
+### Context
+
+Cycle 0.2 chose **per-school admin-toggleable AI authoring**, off by default.
+The toggle has to be queryable cheaply on every authoring request, and we'll
+likely have more flags over time (proctoring features, accessibility flags,
+LMS feature gates). The schema currently has no feature-flag column.
+
+### Options
+
+1. **`School.featureFlags Json`** — single JSONB column on `School`. Cheap,
+   minimal schema change. Flexible. Hard to index, hard to audit per-flag.
+2. **Dedicated `Feature` + `SchoolFeature` tables** *(recommended)* —
+   normalised. Per-flag audit log via existing `AuditLog` table. Per-flag
+   default values, per-flag descriptions, per-flag rollout dates. Slightly
+   more code.
+3. **Hardcoded in env-vars** — rejected: not per-school.
+
+### Recommendation
+
+Option 2. The audit/compliance posture (SOC 2 + COPPA) means we need to
+prove who turned what on, when, and why. JSONB makes that hard. A
+`SchoolFeature` row with `enabledBy`, `enabledAt`, `disabledAt` falls
+naturally into our `AuditLog` discipline.
+
+### Consequences
+
+- New tables in Stage 1 schema migration
+- A small admin UI for the IT lead to toggle features (Stage 2)
+- Server-side helper: `await schoolFeatureEnabled(schoolId, 'ai-authoring')`
+  with Redis-cached results
+- First flag: `ai-authoring`. Second-likely: `live-proctoring`. Third:
+  `seb-tier-3`.
+
+---
+
+## D5 — Canvas/Moodle/Schoology in v1: confirm K-12 footprint
+
+- **Status:** Open (needs product input)
+- **Raised:** Cycle 0.2, batch 2
+- **Owner:** product
+
+### Context
+
+Cycle 0.2 segment was **K-12 schools (UK/US/EU)**, but the LMS picks
+included **Canvas + Moodle + Schoology**. Canvas is overwhelmingly
+higher-ed. Moodle has a notable UK FE / sixth-form footprint and
+international K-12 use. Schoology is more K-12-native (US).
+
+The combination suggests one of:
+- a deliberate higher-ed/FE/sixth-form opportunism alongside K-12
+- a misclick — really meant Schoology + maybe Moodle
+- intent to serve UK schools that happen to run Moodle for non-exam material
+
+### Options
+
+1. **Keep Schoology + Moodle in v1, drop Canvas** — most K-12-coherent
+2. **Keep all three but document Canvas as "best-effort, no SLA"**
+3. **Drop all three from v1; LMS integration is v2** — let v1 be SSO + CSV
+   only, prove the product first
+4. **Keep all three; admit the higher-ed/FE adjacent market**
+
+### Recommendation
+
+Pending product call. **Defaulting to option 3** until we hear otherwise —
+v1 ships LMS integration via LTI 1.3 (the standard) which all three speak,
+and we don't certify against any specific LMS.
+
+### Consequences
+
+- If option 3: Stage 2 includes a generic LTI 1.3 launch + grade-passback
+  flow tested against one reference LMS only (likely Moodle, since it's
+  free to set up)
+- If options 1/2/4: dedicated test/cert burden per LMS, and we'd need to
+  staff that
+
+---
+
+## D6 — Portal consolidation: collapse teacher + admin into `/console`?
+
+- **Status:** Open (recommendation: collapse, gated on D1)
+- **Raised:** `docs/00-audit.md` §12 Q4
+- **Owner:** unassigned
+
+### Context
+
+Today the repo has **five frontend portals**: `student`, `teacher`, `admin`,
+`superadmin`, plus the `api`. The teacher and admin portals share most of
+their build configuration, design, and shared-frontend integration. The
+divergence between them is shallower than the build cost of running them
+as separate Vite apps.
+
+Cycle 0.2 confirmed the school IT lead is the most-privileged customer
+role; that role naturally sits in the same portal as the teacher (same
+school, same SSO context, same nav shell, just more capabilities).
+
+The vendor `Platform Admin` portal (per D1) stays separate by design — it
+is a different audience on a different subdomain.
+
+### Options
+
+1. **Collapse `teacher` + `admin` into a single `console` app, role-aware**
+   *(recommended)* — drops build matrix from 5 to 4 (then 3 once Platform
+   Admin replaces today's superadmin per D1). Same shared-frontend, same
+   tokens, role gates the routes.
+2. **Keep separate** — clearer URL structure, double the build cost.
+3. **Collapse all three (teacher + admin + superadmin)** — rejected: D1
+   says vendor-side stays separate.
+
+### Recommendation
+
+Option 1, after D1 is decided. The split is logically: customer console
+(teacher + school admin) vs. vendor console (platform admin) vs. student
+exam-taking.
+
+### Consequences
+
+- Stage 2 work: merge `apps/teacher` and `apps/admin` into `apps/console`
+- URL structure: `/console/teacher/...` and `/console/admin/...` or
+  role-rooted: `/c/exams`, `/c/admin/users` with auto role-detection
+- Single deploy target, single nginx vhost, single Dockerfile
+- One fewer place to forget to apply security fixes
+
+---
+
+## D7 — Concurrent-scale ceiling and WebSocket horizontal scaling
+
+- **Status:** Open (needs product input)
+- **Raised:** `docs/00-audit.md` §12 Q5
+- **Owner:** product + infra
+
+### Context
+
+WebSocket pub/sub is **single-instance today** (audit §5.3). Horizontal
+scaling needs Redis pub/sub fan-out (already a dependency for refresh
+tokens, OTP rate-limit, idempotency — audit §1) but not yet wired for WS.
+
+We need a target peak concurrency to size:
+
+- WS connections per node
+- Postgres connection pool
+- Redis throughput
+- Whether autosave goes through WS or HTTP (HTTP scales easier)
+
+### Options to put in front of product
+
+1. **Single school, ~500 concurrent students** — single-instance is fine.
+   No infra investment in Stage 1.
+2. **Multi-school peak day, ~5,000 concurrent students** — needs WS
+   fan-out via Redis. Stage 3 work.
+3. **National exam day, ~50,000+ concurrent students** — different
+   architecture entirely (regional shards, dedicated WS tier, Postgres
+   read replicas, queue-backed autosave). Not a v1 ask.
+
+### Recommendation
+
+Pending product input. Default planning assumption: **option 2** (multi-school
+peak day). Sizes WS for low-tens-of-thousands without forcing us into a
+geo-sharded architecture.
+
+### Consequences
+
+- If option 1: defer Stage 3 WS fan-out
+- If option 2: Stage 3 includes Redis pub/sub fan-out + horizontal WS;
+  autosave moves to HTTP idempotent POST (already partly in place via
+  idempotency middleware — audit §1)
+- If option 3: re-architect; this is a separate Stage altogether
+
+---
+
+**End of decisions log. Append new decisions below.**
