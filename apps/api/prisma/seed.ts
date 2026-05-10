@@ -1,7 +1,23 @@
 // apps/api/prisma/seed.ts
 // Run: npm run db:seed --workspace=apps/api
+//
+// Cycle 2.1d update: in addition to the original 1 school + 1 teacher + 5
+// students + 1 exam, the seed now also lays down enough data for the
+// docs/05-manual-testing.md walkthrough to be exercise-ready out of the
+// box:
+//   - a second school ("Other School") so cross-tenant chaos cases have a
+//     real B-side
+//   - a SCHOOL_ADMIN account on the demo school
+//   - the per-school AI feature flag enabled (so AI authoring routes don't
+//     all 403 when a teacher tries them)
+//   - one sample PLATFORM_ADMIN impersonation row in audit_logs so the
+//     compliance ledger query has something to return
+//
+// Defaults stay off where the product brief says they should — only
+// `ai-authoring` is opted-in for the demo school as a convenience for
+// reviewers; live-proctoring and seb-tier-3 stay off.
 
-import { PrismaClient, Role, QuestionType, ExamStatus } from '@prisma/client';
+import { PrismaClient, Role, QuestionType, ExamStatus, AuditAction } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -233,12 +249,108 @@ async function main() {
   });
   console.log('✅ Exam:', exam.title);
 
+  // ── Second school for cross-tenant chaos walkthrough ──
+  const otherSchool = await prisma.school.upsert({
+    where: { domain: 'other.school.edu' },
+    update: {},
+    create: { name: 'Other School', domain: 'other.school.edu' },
+  });
+  await prisma.user.upsert({
+    where: { email: 'teacher@other.school.edu' },
+    update: {},
+    create: {
+      email: 'teacher@other.school.edu',
+      passwordHash: teacherPassword,
+      name: 'Other Teacher',
+      role: Role.TEACHER,
+      schoolId: otherSchool.id,
+    },
+  });
+  console.log('✅ Other school + teacher (for cross-tenant test cases)');
+
+  // ── Feature catalogue + per-school toggles (cycle 2.0e / D4) ──
+  // The catalogue is also seeded by the migration; upsert here is idempotent
+  // and makes the seed self-contained for a fresh DB without `migrate dev`.
+  await prisma.feature.upsert({
+    where: { key: 'ai-authoring' },
+    update: {},
+    create: {
+      key: 'ai-authoring',
+      name: 'AI question authoring',
+      description: 'Lets teachers generate questions and grading feedback with Claude. Off by default; opt-in per school.',
+      category: 'ai',
+      defaultEnabled: false,
+    },
+  });
+  await prisma.feature.upsert({
+    where: { key: 'live-proctoring' },
+    update: {},
+    create: {
+      key: 'live-proctoring',
+      name: 'Live video proctoring',
+      description: 'Reserved placeholder for a future cycle.',
+      category: 'proctoring',
+      defaultEnabled: false,
+    },
+  });
+  await prisma.feature.upsert({
+    where: { key: 'seb-tier-3' },
+    update: {},
+    create: {
+      key: 'seb-tier-3',
+      name: 'Safe Exam Browser (Tier 3)',
+      description: 'Reserved for Stage 5. SEB handoff for Tier-3 sit-down exams on Windows.',
+      category: 'proctoring',
+      defaultEnabled: false,
+    },
+  });
+
+  // Demo convenience: turn AI authoring ON for the demo school so reviewers
+  // can hit /api/v1/ai/* without first having to toggle the flag. The
+  // feature stays OFF for the second school so cross-school behaviour is
+  // visible in the manual test walkthrough.
+  await prisma.schoolFeature.upsert({
+    where: { schoolId_featureKey: { schoolId: school.id, featureKey: 'ai-authoring' } },
+    update: { enabled: true, enabledAt: new Date(), enabledById: admin.id, disabledAt: null },
+    create: {
+      schoolId: school.id,
+      featureKey: 'ai-authoring',
+      enabled: true,
+      enabledAt: new Date(),
+      enabledById: admin.id,
+    },
+  });
+  console.log('✅ Feature flags seeded (ai-authoring ON for demo school)');
+
+  // ── Sample PLATFORM_ADMIN impersonation audit row (cycle 2.0f) ──
+  // Gives docs/05-manual-testing.md's "compliance ledger" check something
+  // to return without needing to actually exercise the platform admin UI.
+  await prisma.auditLog.create({
+    data: {
+      actorId: superAdmin.id,
+      action: AuditAction.SCHOOL_PROVISIONED,
+      targetType: 'School',
+      targetId: school.id,
+      meta: { name: school.name, seeded: true } as object,
+      actorRole: 'PLATFORM_ADMIN',
+      actorSchoolId: null,
+      targetSchoolId: school.id,
+      impersonation: true,
+    },
+  });
+  console.log('✅ Sample impersonation audit row written');
+
   console.log('\n🎉 Seed complete!\n');
-  console.log('Demo accounts:');
-  console.log('  Super:   superadmin@demo.school.edu / superadmin123');
-  console.log('  Admin:   admin@demo.school.edu   / admin123');
-  console.log('  Teacher: teacher@demo.school.edu / teacher123');
-  console.log('  Student: student1@demo.school.edu / student123');
+  console.log('Demo accounts (passwords are bcrypt cost 12, all in plain text below for dev convenience):');
+  console.log('  PLATFORM_ADMIN:  superadmin@demo.school.edu / superadmin123  (vendor-side, cross-tenant)');
+  console.log('  SCHOOL_ADMIN:    admin@demo.school.edu      / admin123       (demo school IT lead)');
+  console.log('  TEACHER (demo):  teacher@demo.school.edu    / teacher123');
+  console.log('  TEACHER (other): teacher@other.school.edu   / teacher123     (B-side school)');
+  console.log('  STUDENT 1..5:    student[1-5]@demo.school.edu / student123');
+  console.log('\nFeature flags:');
+  console.log('  demo.school.edu  → ai-authoring ON, live-proctoring + seb-tier-3 OFF');
+  console.log('  other.school.edu → all flags OFF (default)');
+  console.log('\nNext: see docs/05-manual-testing.md for end-to-end flows.');
 }
 
 main()

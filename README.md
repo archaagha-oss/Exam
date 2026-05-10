@@ -19,6 +19,20 @@ Node + Express + Prisma + Postgres + Redis backend.
 > - [`docs/04-stage2-prereqs-closure.md`](docs/04-stage2-prereqs-closure.md)
 >   — Stage 2 prereqs (D1 role split, D6 portal merge, D4 feature flags,
 >   cross-tenant impersonation audit).
+> - [`docs/05-manual-testing.md`](docs/05-manual-testing.md) — end-to-end
+>   walkthroughs: chaos test, per-cycle smoke checks, hot-path
+>   durability for the four hero workflows, compliance smoke checks.
+>
+> Per-app overviews:
+>
+> - [`apps/api/README.md`](apps/api/README.md) — backend layout + tests
+>   that pin the architecture invariants
+> - [`apps/student/README.md`](apps/student/README.md) — exam-taking SPA,
+>   anti-cheat surface, IndexedDB autosave + server-authoritative timer
+> - [`apps/console/README.md`](apps/console/README.md) — TEACHER +
+>   SCHOOL_ADMIN role-aware console (was teacher + admin pre-D6)
+> - [`apps/platform/README.md`](apps/platform/README.md) — vendor-only
+>   PLATFORM_ADMIN portal (was superadmin pre-2.0c)
 >
 > Older operational docs (`docs/ARCHITECTURE.md`, `docs/THREAT_MODEL.md`,
 > `docs/RUNBOOK.md`) describe the pre-Stage-1 state and are accurate where
@@ -410,11 +424,39 @@ file.
 
 ---
 
+## Manual testing
+
+End-to-end walkthroughs (chaos test, per-cycle smoke checks, hot-path
+durability, compliance evidence trail) live in
+[`docs/05-manual-testing.md`](docs/05-manual-testing.md). After
+`npm run db:seed --workspace=apps/api` you have:
+
+| Role             | Email                       | Password       |
+| ---------------- | --------------------------- | -------------- |
+| PLATFORM_ADMIN   | superadmin@demo.school.edu  | superadmin123  |
+| SCHOOL_ADMIN     | admin@demo.school.edu       | admin123       |
+| TEACHER (demo)   | teacher@demo.school.edu     | teacher123     |
+| TEACHER (other)  | teacher@other.school.edu    | teacher123     |
+| STUDENT 1..5     | student[1-5]@demo.school.edu | student123    |
+
+Two schools are seeded so cross-tenant chaos cases have a real B-side.
+The `ai-authoring` feature flag (cycle 2.0e / D4) is ON for the demo
+school, OFF for the other one — so reviewers see both behaviours of the
+gate.
+
 ## Contributing
 
 PRs follow the template at [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md):
-*Summary / Audit-link / Test-plan / Risk / Out-of-scope*. New routes that
-mutate by id need to use `findFirst` + `tenantScope` (the static-scan
-test enforces it). New audit writes that PLATFORM_ADMIN can trigger
-should use `auditFromReq` so the impersonation flag gets set
-correctly (cycle 2.0f).
+*Summary / Audit-link / Test-plan / Risk / Out-of-scope*. Three
+discipline rules pinned by tests in `apps/api/test/`:
+
+1. **New routes that mutate by id** use `findFirst` + `tenantScope` —
+   the `tenantInvariant.test.ts` static scan fails CI on regressions.
+2. **New JWT verification paths** stay HS256-only (`jwtAlg.test.ts`).
+3. **New audit writes that PLATFORM_ADMIN can trigger** use
+   `auditFromReq` so the `impersonation` flag gets set automatically
+   (cycle 2.0f).
+
+When in doubt, walk the relevant section of
+[`docs/05-manual-testing.md`](docs/05-manual-testing.md) before
+opening the PR.
