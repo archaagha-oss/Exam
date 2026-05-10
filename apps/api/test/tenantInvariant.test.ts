@@ -29,9 +29,10 @@ const MODULES_ROOT = join(__dirname, '..', 'src', 'modules');
 const ALLOWLIST: string[] = [
   // PLATFORM_ADMIN portal is cross-tenant by design — it manages every school
   // on the platform. After cycle 2.0a / D1, this is the vendor-side
-  // PLATFORM_ADMIN role; the cross-tenant findUnique pattern in this single
-  // file is the intended behaviour.
-  join(MODULES_ROOT, 'superadmin', 'superadmin.router.ts'),
+  // PLATFORM_ADMIN role; cycle 2.0c renamed the module from superadmin/
+  // to platform/. The cross-tenant findUnique pattern in this single file
+  // is the intended behaviour.
+  join(MODULES_ROOT, 'platform', 'platform.router.ts'),
 ];
 
 function walkRouters(dir: string): string[] {

@@ -1,4 +1,4 @@
-// apps/superadmin/src/pages/SchoolsPage.tsx
+// apps/platform/src/pages/SchoolsPage.tsx
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/api';

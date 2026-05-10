@@ -1,4 +1,4 @@
-// apps/superadmin/src/lib/api.ts
+// apps/platform/src/lib/api.ts
 import { createApiClient } from '@secureexam/shared-frontend';
 import { useAuthStore } from '../store/authStore';
 

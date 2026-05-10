@@ -1,27 +1,31 @@
-# docker/Dockerfile.superadmin
+# docker/Dockerfile.platform
+#
 # Vendor-only Platform Admin portal. Hosted on an internal subdomain
-# (platform.<vendor>.com), allowlisted IP, MFA-required. Cycle 1.1b
-# closes the audit's P1-8 gap (no Dockerfile, no CI build, no nginx vhost).
+# (platform.<vendor>.com), allowlisted IP, MFA-required.
+#
+# Cycle 1.1b closed the audit's P1-8 gap (no Dockerfile, no CI build, no
+# nginx vhost). Cycle 2.0c renamed apps/superadmin → apps/platform so the
+# directory matches the post-D1 PLATFORM_ADMIN role.
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-COPY apps/superadmin/package.json ./apps/superadmin/
+COPY apps/platform/package.json ./apps/platform/
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-frontend/package.json ./packages/shared-frontend/
-RUN npm ci --workspace=apps/superadmin \
+RUN npm ci --workspace=apps/platform \
     --workspace=packages/shared-types \
     --workspace=packages/shared-frontend \
     --include-workspace-root
 
 FROM deps AS build
-COPY apps/superadmin ./apps/superadmin
+COPY apps/platform ./apps/platform
 COPY packages/shared-types ./packages/shared-types
 COPY packages/shared-frontend ./packages/shared-frontend
 ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
-RUN npm run build --workspace=apps/superadmin
+RUN npm run build --workspace=apps/platform
 
 FROM nginx:alpine AS runner
-COPY --from=build /app/apps/superadmin/dist /usr/share/nginx/html
+COPY --from=build /app/apps/platform/dist /usr/share/nginx/html
 COPY docker/nginx-spa.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

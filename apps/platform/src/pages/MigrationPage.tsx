@@ -1,4 +1,4 @@
-// apps/superadmin/src/pages/MigrationPage.tsx
+// apps/platform/src/pages/MigrationPage.tsx
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 
