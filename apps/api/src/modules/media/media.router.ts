@@ -2,6 +2,8 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authenticate, isTeacher } from '../../middleware/auth';
+import { tenantScope } from '../../lib/examAccess';
+import prisma from '../../lib/prisma';
 import { uploadMedia, validateMediaType } from '../../lib/storage';
 
 const router = Router();
@@ -35,19 +37,23 @@ router.post(
       return;
     }
 
+    const question = await prisma.question.findFirst({
+      where: { id: req.params.questionId, ...tenantScope(req.user.role, req.user.schoolId) },
+      select: { id: true, schoolId: true },
+    });
+    if (!question) { res.status(404).json({ error: 'Question not found' }); return; }
+
     try {
       const result = await uploadMedia(
-        req.user.schoolId!,
-        req.params.questionId,
+        question.schoolId,
+        question.id,
         req.file.buffer,
         req.file.mimetype,
         req.file.originalname
       );
 
-      // Update the question's mediaUrl in the DB
-      const prisma = (await import('../../lib/prisma')).default;
       await prisma.question.update({
-        where: { id: req.params.questionId },
+        where: { id: question.id },
         data: { mediaUrl: result.url },
       });
 
@@ -63,9 +69,14 @@ router.post(
  * Removes the media attachment from a question.
  */
 router.delete('/questions/:questionId', async (req: Request, res: Response) => {
-  const prisma = (await import('../../lib/prisma')).default;
+  const question = await prisma.question.findFirst({
+    where: { id: req.params.questionId, ...tenantScope(req.user.role, req.user.schoolId) },
+    select: { id: true },
+  });
+  if (!question) { res.status(404).json({ error: 'Question not found' }); return; }
+
   await prisma.question.update({
-    where: { id: req.params.questionId },
+    where: { id: question.id },
     data: { mediaUrl: null },
   });
   res.json({ data: { removed: true } });

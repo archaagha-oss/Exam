@@ -71,10 +71,12 @@ export function useProctor(examId: string) {
   const connect = useCallback(() => {
     if (!token || !examId) return;
 
+    // Token is sent via Sec-WebSocket-Protocol "bearer.<jwt>" subprotocol so it
+    // never appears in URLs / proxy access logs (P1-2, audit §8).
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${protocol}://${window.location.host}/ws?token=${token}&examId=${examId}`;
+    const wsUrl = `${protocol}://${window.location.host}/ws?examId=${examId}`;
 
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, [`bearer.${token}`]);
     wsRef.current = ws;
 
     ws.onopen = () => {

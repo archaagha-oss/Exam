@@ -5,13 +5,17 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { authenticate, isTeacher } from '../../middleware/auth';
 import { canManageExam, audit } from '../../lib/examAccess';
+import { idempotency } from '../../middleware/idempotency';
 import { sendPinEmail } from '../notifications/notifications.service';
 import prisma from '../../lib/prisma';
 
 const router = Router();
 router.use(authenticate, isTeacher);
 
-router.post('/generate', async (req: Request, res: Response) => {
+// Cycle 1.3 / P1-15: idempotent. Without this a retried PIN generation —
+// triggered by an exam-day teacher hitting Generate again because the first
+// click "felt slow" — produces duplicate PINs and invalidates the first set.
+router.post('/generate', idempotency('pins'), async (req: Request, res: Response) => {
   const schema = z.object({
     examId: z.string().uuid(),
     purposes: z.array(z.enum(['UNLOCK', 'EXIT'])).min(1),
@@ -23,7 +27,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     return;
   }
 
-  const allowed = await canManageExam(req.user.sub, req.user.role, parsed.data.examId);
+  const allowed = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, parsed.data.examId);
   if (!allowed) {
     res.status(403).json({ error: 'Only the exam owner can generate PINs' });
     return;
@@ -89,6 +93,19 @@ router.post('/generate', async (req: Request, res: Response) => {
 });
 
 router.get('/:examId', async (req: Request, res: Response) => {
+  // PIN metadata reveals exam usage — gate behind canManageExam (which now
+  // includes tenant scoping after the cycle 1.1a fix).
+  const allowed = await canManageExam(
+    req.user.sub,
+    req.user.role,
+    req.user.schoolId,
+    req.params.examId
+  );
+  if (!allowed) {
+    res.status(404).json({ error: 'Exam not found' });
+    return;
+  }
+
   const pins = await prisma.examPin.findMany({
     where: { examId: req.params.examId },
     select: { purpose: true, createdAt: true, expiresAt: true, usedAt: true },

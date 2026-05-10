@@ -1,6 +1,6 @@
 // apps/superadmin/src/pages/OverviewPage.tsx
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../App';
+import api from '../lib/api';
 
 const S = { padding: '32px' };
 const card = { background: '#111827', border: '1px solid #1f2937', borderRadius: 12, padding: 20 } as const;
@@ -12,12 +12,12 @@ interface Stats {
   sessions: { total: number; activeNow: number; last30d: number };
 }
 
-export default function OverviewPage({ token }: { token: string | null }) {
+export default function OverviewPage() {
   const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
-    apiFetch('/platform/stats', {}, token).then(r => setStats(r.data));
-  }, [token]);
+    api.get('/platform/stats').then((r) => setStats(r.data.data));
+  }, []);
 
   if (!stats) return <div style={{ ...S, color: '#6b7280' }}>Loading…</div>;
 

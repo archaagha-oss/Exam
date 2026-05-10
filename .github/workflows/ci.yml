@@ -115,6 +115,22 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/secureexam-teacher:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/secureexam-teacher:latest
 
+      - name: Build and push School Admin portal
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.admin
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/secureexam-admin:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/secureexam-admin:latest
+
+      - name: Build and push Platform Admin portal
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.superadmin
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/secureexam-superadmin:${{ github.sha }},${{ secrets.DOCKER_USERNAME }}/secureexam-superadmin:latest
+
   # ── Deploy ───────────────────────────────────────────────
   deploy:
     name: Deploy to Production

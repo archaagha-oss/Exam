@@ -4,7 +4,9 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { authenticate, isTeacher, isStudent } from '../../middleware/auth';
-import { canManageExam } from '../../lib/examAccess';
+import { canManageExam, tenantScope } from '../../lib/examAccess';
+import { idempotency } from '../../middleware/idempotency';
+import { logger } from '../../lib/logger';
 import prisma from '../../lib/prisma';
 
 const router = Router();
@@ -43,13 +45,16 @@ function getClientIp(req: Request): string {
 // ── MAGIC LINKS ──────────────────────────────────────────
 
 // POST /api/v1/security/exams/:id/invites/generate
-// Teacher generates magic links for their class roster
+// Teacher generates magic links for their class roster.
+// Cycle 1.3 / P1-15: idempotent. Same rationale as /pins/generate — exam-day
+// teachers retry on perceived slowness.
 router.post(
   '/exams/:id/invites/generate',
   authenticate,
   isTeacher,
+  idempotency('invites'),
   async (req: Request, res: Response) => {
-    const canManage = await canManageExam(req.user.sub, req.user.role, req.params.id);
+    const canManage = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
     if (!canManage) {
       res.status(403).json({ error: 'Access denied' });
       return;
@@ -121,7 +126,7 @@ router.post(
   authenticate,
   isTeacher,
   async (req: Request, res: Response) => {
-    const canManage = await canManageExam(req.user.sub, req.user.role, req.params.id);
+    const canManage = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
     if (!canManage) {
       res.status(403).json({ error: 'Access denied' });
       return;
@@ -162,7 +167,7 @@ router.post(
 // GET /api/v1/security/exams/:id/invites
 // List all invites for an exam (teacher)
 router.get('/exams/:id/invites', authenticate, isTeacher, async (req: Request, res: Response) => {
-  const canManage = await canManageExam(req.user.sub, req.user.role, req.params.id);
+  const canManage = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!canManage) {
     res.status(403).json({ error: 'Access denied' });
     return;
@@ -517,10 +522,14 @@ router.post(
 router.get(
   '/sessions/:sessionId/device-alerts',
   authenticate,
+  isTeacher,
   async (req: Request, res: Response) => {
-    const session = await prisma.examSession.findUnique({
-      where: { id: req.params.sessionId },
-      select: { examId: true },
+    const session = await prisma.examSession.findFirst({
+      where: {
+        id: req.params.sessionId,
+        exam: tenantScope(req.user.role, req.user.schoolId),
+      },
+      select: { id: true },
     });
     if (!session) {
       res.status(404).json({ error: 'Not found' });
@@ -528,7 +537,7 @@ router.get(
     }
 
     const alerts = await prisma.deviceAlert.findMany({
-      where: { sessionId: req.params.sessionId },
+      where: { sessionId: session.id },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ data: alerts });
@@ -596,7 +605,15 @@ async function sendInviteEmail(
 
 async function sendOtpEmail(email: string, name: string, code: string, examTitle: string) {
   if (!process.env.SMTP_HOST) {
-    console.log(`[OTP] Code for ${email}: ${code}`); // dev fallback
+    // SMTP not configured. Do NOT log the OTP value: it is plaintext-equivalent
+    // to a session token, would be persisted in any log aggregator the API
+    // ships to, and is exactly the leak P0-6 was about. Local devs who need
+    // the code can pull it from the OtpToken row in Postgres or Redis.
+    if (process.env.NODE_ENV !== 'production' && process.env.OTP_DEV_LOG === '1') {
+      logger.debug({ email, examTitle, code }, '[dev] OTP code (OTP_DEV_LOG=1)');
+    } else {
+      logger.warn({ email, examTitle }, 'SMTP not configured; OTP not delivered');
+    }
     return;
   }
   const nodemailer = (await import('nodemailer')).default;

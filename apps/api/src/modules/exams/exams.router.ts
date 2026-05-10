@@ -220,7 +220,7 @@ router.put('/:id/items/reorder', isTeacher, async (req: Request, res: Response) 
 // POST /api/v1/exams/:id/activate  — move from PUBLISHED → ACTIVE (starts live session)
 router.post('/:id/activate', isTeacher, async (req: Request, res: Response) => {
   const { canManageExam, audit } = await import('../../lib/examAccess');
-  const allowed = await canManageExam(req.user.sub, req.user.role, req.params.id);
+  const allowed = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!allowed) {
     res.status(403).json({ error: 'Only the exam owner can activate it' });
     return;
@@ -241,7 +241,7 @@ router.post('/:id/activate', isTeacher, async (req: Request, res: Response) => {
 // POST /api/v1/exams/:id/close
 router.post('/:id/close', isTeacher, async (req: Request, res: Response) => {
   const { canManageExam, audit } = await import('../../lib/examAccess');
-  const allowed = await canManageExam(req.user.sub, req.user.role, req.params.id);
+  const allowed = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!allowed) {
     res.status(403).json({ error: 'Only the exam owner can close it' });
     return;

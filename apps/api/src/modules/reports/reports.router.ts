@@ -1,6 +1,7 @@
 // apps/api/src/modules/reports/reports.router.ts
 import { Router, Request, Response } from 'express';
 import { authenticate, isTeacher } from '../../middleware/auth';
+import { tenantScope } from '../../lib/examAccess';
 import prisma from '../../lib/prisma';
 
 const router = Router();
@@ -8,8 +9,8 @@ router.use(authenticate, isTeacher);
 
 // GET /api/v1/reports/exams/:id  — full results for an exam
 router.get('/exams/:id', async (req: Request, res: Response) => {
-  const exam = await prisma.exam.findUnique({
-    where: { id: req.params.id },
+  const exam = await prisma.exam.findFirst({
+    where: { id: req.params.id, ...tenantScope(req.user.role, req.user.schoolId) },
     include: {
       items: {
         include: { question: { select: { id: true, body: true, type: true, correctIds: true } } },
@@ -93,8 +94,12 @@ router.get('/exams/:id', async (req: Request, res: Response) => {
 
 // GET /api/v1/reports/exams/:id/sessions/:sessionId  — single student detail
 router.get('/exams/:id/sessions/:sessionId', async (req: Request, res: Response) => {
-  const session = await prisma.examSession.findUnique({
-    where: { id: req.params.sessionId },
+  const session = await prisma.examSession.findFirst({
+    where: {
+      id: req.params.sessionId,
+      examId: req.params.id,
+      exam: tenantScope(req.user.role, req.user.schoolId),
+    },
     include: {
       student: { select: { id: true, name: true, email: true } },
       exam: {

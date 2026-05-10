@@ -12,7 +12,7 @@ router.use(authenticate, isTeacher);
  * Per-exam analytics: question difficulty index, time analysis, violation breakdown.
  */
 router.get('/exams/:id', async (req: Request, res: Response) => {
-  const ok = await canProctorExam(req.user.sub, req.user.role, req.params.id);
+  const ok = await canProctorExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
   if (!ok) { res.status(403).json({ error: 'Access denied' }); return; }
 
   const exam = await prisma.exam.findUnique({

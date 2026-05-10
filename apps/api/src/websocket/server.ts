@@ -43,20 +43,22 @@ export function setupWebSocket(server: http.Server) {
     const sessionId = url.searchParams.get('sessionId') ?? undefined;
     const examId = url.searchParams.get('examId') ?? undefined;
 
-    // Token auth: prefer Sec-WebSocket-Protocol subprotocol header
-    // (NOT logged by proxies), fall back to ?token= for backward compat.
-    // Subprotocol format: "bearer.<jwt>"
+    // Token auth: ONLY via Sec-WebSocket-Protocol "bearer.<jwt>" subprotocol.
+    // The ?token= query fallback was removed in cycle 1.1b (P1-2) — query
+    // params travel through every proxy access log on the path; subprotocol
+    // headers do not. Both clients (apps/student/ExamSessionPage,
+    // apps/teacher/useProctor) were migrated in the same cycle.
     const subprotoHeader = (req.headers['sec-websocket-protocol'] as string | undefined) ?? '';
     const protoTokens = subprotoHeader
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    const subprotoToken = protoTokens.find((p) => p.startsWith('bearer.'))?.slice('bearer.'.length);
-    const queryToken = url.searchParams.get('token');
-    const token = subprotoToken || queryToken;
+    const token = protoTokens
+      .find((p) => p.startsWith('bearer.'))
+      ?.slice('bearer.'.length);
 
     if (!token) {
-      ws.close(4001, 'Missing token');
+      ws.close(4001, 'Missing token (use bearer.<jwt> subprotocol)');
       return;
     }
 
@@ -83,7 +85,7 @@ export function setupWebSocket(server: http.Server) {
     if (examId && ['TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       // Phase 3: enforce access control before joining proctor room
       const { canProctorExam } = await import('../lib/examAccess');
-      const allowed = await canProctorExam(user.sub, user.role, examId);
+      const allowed = await canProctorExam(user.sub, user.role, user.schoolId, examId);
       if (!allowed) {
         ws.close(4003, 'Access denied to this exam');
         return;
@@ -189,7 +191,27 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
     case 'session:heartbeat': {
       client.lastHeartbeat = Date.now();
       client.isStale = false;
-      client.ws.send(JSON.stringify({ type: 'pong', payload: {}, timestamp: ts }));
+
+      // Server-authoritative timer (cycle 1.2 / P1-3). Each heartbeat reply
+      // carries the canonical secondsRemaining. The client uses this as
+      // ground truth and only does local 1s decrement between heartbeats for
+      // smooth UI. Without this, a client that pauses the JS event loop
+      // (devtools, throttling, dragging the tab) drifts, and a client that
+      // tampers with setInterval can extend the exam.
+      let secondsRemaining: number | null = null;
+      if (client.sessionId) {
+        const { computeSecondsRemaining } = await import(
+          '../modules/sessions/sessions.service'
+        );
+        secondsRemaining = await computeSecondsRemaining(client.sessionId);
+      }
+      client.ws.send(
+        JSON.stringify({
+          type: 'pong',
+          payload: { secondsRemaining },
+          timestamp: ts,
+        })
+      );
 
       // Broadcast live progress snapshot to proctors
       if (client.sessionId && client.examId) {
