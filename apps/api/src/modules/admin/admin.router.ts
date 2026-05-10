@@ -409,8 +409,6 @@ router.delete('/proctors/:examId/:teacherId', async (req: Request, res: Response
   res.json({ data: { removed: true } });
 });
 
-export default router;
-
 // ── PASSWORD RESET ON BEHALF OF USER ──────────────────────
 
 // POST /api/v1/admin/users/:id/reset-password
@@ -757,3 +755,5 @@ router.put('/features/:key', async (req: Request, res: Response) => {
 
   res.json({ data: { key: req.params.key, enabled: parsed.data.enabled } });
 });
+
+export default router;
