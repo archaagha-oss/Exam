@@ -239,33 +239,21 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
     }
 
     // ── Student: save answer ──
+    //
+    // Cycle 3.0c: REST is now the authoritative autosave path
+    // (POST /api/v1/sessions/:id/answer with Idempotency-Key). The WS
+    // handler was removed because it duplicated the write — both paths
+    // called saveAnswer() with no idempotency on the WS side, opening a
+    // race where a retry could write twice. The REST handler now also
+    // pushes the proctor:update snapshot via the broadcaster, so the
+    // proctor view stays live without the WS write path.
+    //
+    // The WS still receives `session:answer` from older clients for one
+    // release; we ignore it silently rather than 4xx so a stale tab
+    // doesn't hard-fail mid-exam. Drop this stub once the student client
+    // ships without sending it (cycle 3.0c also updates that side).
     case 'session:answer': {
-      if (!payload.sessionId || !payload.questionId) break;
-      const { saveAnswer } = await import('../modules/sessions/sessions.service');
-      await saveAnswer(
-        payload.sessionId,
-        payload.questionId,
-        payload.selectedIds,
-        payload.textAnswer
-      );
-      client.ws.send(
-        JSON.stringify({
-          type: 'answer:saved',
-          payload: { questionId: payload.questionId },
-          timestamp: ts,
-        })
-      );
-
-      // Push updated snapshot to proctors
-      if (client.examId) {
-        const snapshot = await buildSessionSnapshot(payload.sessionId);
-        if (snapshot)
-          broadcaster.broadcastToProctors(client.examId, {
-            type: 'proctor:update',
-            payload: snapshot,
-            timestamp: ts,
-          });
-      }
+      // intentionally a no-op — see comment above
       break;
     }
 

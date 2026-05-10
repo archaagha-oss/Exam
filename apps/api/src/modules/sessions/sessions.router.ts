@@ -97,6 +97,34 @@ router.post(
       parsed.data.timeSpentSeconds
     );
     res.json({ data: answer });
+
+    // Cycle 3.0c: REST is now the authoritative autosave path. The WS
+    // `session:answer` handler has been removed (it was a duplicate write).
+    // We still want proctors to see live progress, so push a snapshot
+    // through the broadcaster after the response is sent — best-effort,
+    // never blocks the student's autosave round-trip.
+    setImmediate(async () => {
+      try {
+        const { broadcaster } = await import('../../lib/wsBroadcast');
+        const { buildSessionSnapshot } = await import('../../websocket/server');
+        const prismaModule = await import('../../lib/prisma');
+        const session = await prismaModule.default.examSession.findUnique({
+          where: { id: req.params.id },
+          select: { examId: true },
+        });
+        if (!session?.examId) return;
+        const snapshot = await buildSessionSnapshot(req.params.id);
+        if (snapshot) {
+          broadcaster.broadcastToProctors(session.examId, {
+            type: 'proctor:update',
+            payload: snapshot,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch {
+        /* best-effort proctor snapshot push; do not surface to student */
+      }
+    });
   }
 );
 

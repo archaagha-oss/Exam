@@ -259,14 +259,10 @@ export default function ExamSessionPage() {
       });
       await removeQueued(write.id).catch(() => {});
       refreshQueueCount();
-      // Optimistic WS broadcast for the proctor view; best-effort, not auth.
-      wsRef.current?.send(
-        JSON.stringify({
-          type: 'session:answer',
-          payload: { sessionId, ...payload },
-          timestamp: new Date().toISOString(),
-        })
-      );
+      // Cycle 3.0c: REST autosave is the authoritative path; the WS
+      // `session:answer` message was a duplicate write and has been
+      // removed from the server. Proctors now receive `proctor:update`
+      // snapshots triggered from the REST handler instead.
     } catch {
       // Stay in queue; flushPendingAnswers / drainQueue retries on reconnect.
     }
