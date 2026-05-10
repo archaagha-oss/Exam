@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { authenticate, isTeacher, isStudent } from '../../middleware/auth';
 import { canManageExam, tenantScope } from '../../lib/examAccess';
+import { idempotency } from '../../middleware/idempotency';
 import { logger } from '../../lib/logger';
 import prisma from '../../lib/prisma';
 
@@ -44,11 +45,14 @@ function getClientIp(req: Request): string {
 // ── MAGIC LINKS ──────────────────────────────────────────
 
 // POST /api/v1/security/exams/:id/invites/generate
-// Teacher generates magic links for their class roster
+// Teacher generates magic links for their class roster.
+// Cycle 1.3 / P1-15: idempotent. Same rationale as /pins/generate — exam-day
+// teachers retry on perceived slowness.
 router.post(
   '/exams/:id/invites/generate',
   authenticate,
   isTeacher,
+  idempotency('invites'),
   async (req: Request, res: Response) => {
     const canManage = await canManageExam(req.user.sub, req.user.role, req.user.schoolId, req.params.id);
     if (!canManage) {

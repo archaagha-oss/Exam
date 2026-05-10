@@ -38,4 +38,25 @@ describe('refresh token rotation', () => {
     const r = await request(app).post('/api/v1/auth/refresh').set('Cookie', refresh1);
     expect(r.status).toBe(401);
   });
+
+  // Cycle 1.3 / P1-7: refresh-token CSRF posture. The body fallback was
+  // removed because it bypassed SameSite=Strict on the cookie. A refresh
+  // request that ONLY supplies the token in the body must now be rejected.
+  it('rejects a refresh request whose token is in the body, not the cookie', async () => {
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'teacher@demo.school.edu', password: 'teacher123' });
+    expect(login.status).toBe(200);
+
+    const cookieArr = ([] as string[]).concat(login.headers['set-cookie'] || []);
+    const cookie = cookieArr.find((c) => c.startsWith('refreshToken='))!;
+    // Pull the raw token value out of the cookie string for the body attempt.
+    const rawToken = cookie.split('refreshToken=')[1].split(';')[0];
+
+    // No Cookie header set; token only in the body.
+    const r = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: rawToken });
+    expect(r.status).toBe(401);
+  });
 });

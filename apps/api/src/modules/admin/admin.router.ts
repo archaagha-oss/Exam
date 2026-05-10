@@ -158,7 +158,10 @@ router.post('/users/bulk-import', async (req: Request, res: Response) => {
 
   for (const u of parsed.data.users) {
     try {
-      const passwordHash = await bcrypt.hash(u.password || DEFAULT_PASSWORD, 10);
+      // bcrypt cost matches the rest of the codebase (login: 12, single-user
+      // create: 12). The previous cost-10 value was inconsistent with the
+      // documented invariant — fixed in cycle 1.3 / P1-5.
+      const passwordHash = await bcrypt.hash(u.password || DEFAULT_PASSWORD, 12);
       await prisma.user.create({
         data: {
           name: u.name,

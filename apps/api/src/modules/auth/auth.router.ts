@@ -34,8 +34,15 @@ router.post('/login', async (req: Request, res: Response) => {
 });
 
 // POST /api/v1/auth/refresh
+//
+// Cookie-only as of cycle 1.3 / P1-7. The body fallback was a CSRF risk:
+// SameSite=Strict protects the httpOnly cookie path from cross-site forgeries
+// but a request body bypasses that protection entirely, letting any same-
+// origin XSS lift the refresh token from JS-readable storage and post it
+// back. Every customer client (student, teacher, admin, superadmin) sends
+// the cookie via withCredentials; the body path was dead and dangerous.
 router.post('/refresh', async (req: Request, res: Response) => {
-  const token = req.cookies?.refreshToken || req.body?.refreshToken;
+  const token = req.cookies?.refreshToken;
   if (!token) {
     res.status(401).json({ error: 'No refresh token' });
     return;
@@ -56,9 +63,10 @@ router.post('/refresh', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/v1/auth/logout — revoke the refresh-token family server-side too
+// POST /api/v1/auth/logout — revoke the refresh-token family server-side too.
+// Cookie-only path (P1-7): same rationale as /refresh.
 router.post('/logout', async (req: Request, res: Response) => {
-  const token = req.cookies?.refreshToken || req.body?.refreshToken;
+  const token = req.cookies?.refreshToken;
   await logout(token);
   res.clearCookie('refreshToken').json({ data: { message: 'Logged out' } });
 });

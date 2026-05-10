@@ -5,13 +5,17 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { authenticate, isTeacher } from '../../middleware/auth';
 import { canManageExam, audit } from '../../lib/examAccess';
+import { idempotency } from '../../middleware/idempotency';
 import { sendPinEmail } from '../notifications/notifications.service';
 import prisma from '../../lib/prisma';
 
 const router = Router();
 router.use(authenticate, isTeacher);
 
-router.post('/generate', async (req: Request, res: Response) => {
+// Cycle 1.3 / P1-15: idempotent. Without this a retried PIN generation —
+// triggered by an exam-day teacher hitting Generate again because the first
+// click "felt slow" — produces duplicate PINs and invalidates the first set.
+router.post('/generate', idempotency('pins'), async (req: Request, res: Response) => {
   const schema = z.object({
     examId: z.string().uuid(),
     purposes: z.array(z.enum(['UNLOCK', 'EXIT'])).min(1),

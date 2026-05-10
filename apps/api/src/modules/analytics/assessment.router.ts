@@ -352,16 +352,25 @@ router.post('/sessions/:id/feedback/ai', authenticate, isTeacher, async (req: Re
     .filter(([, v]) => v.total > 0 && v.correct / v.total < 0.6)
     .map(([tag]) => tag);
 
-  const prompt = `A student named ${session.student.name} just completed the exam "${session.exam.title}".
-
-Weak areas (topics scoring below 60%): ${weakTags.length ? weakTags.join(', ') : 'none identified'}
-
-Questions they answered incorrectly (up to 5):
-${wrongQuestions.slice(0, 5).map((q, i) => `${i + 1}. ${q}`).join('\n')}
-
-Write a short, encouraging, personalised study recommendation (3-4 sentences) for this student.
-Focus on the weak topics. Suggest specific study strategies. Keep it constructive and actionable.
-Do not repeat the question text back to them.`;
+  // Cycle 1.3 / P1-6: every interpolated string runs through the AI prompt
+  // guard before composition. Catches role-override patterns and length-
+  // bombs even when the upstream data is teacher- or system-authored.
+  const { buildFeedbackPrompt, PromptInjectionError } = await import('../../lib/aiPrompt');
+  let prompt;
+  try {
+    prompt = buildFeedbackPrompt({
+      studentName: session.student.name,
+      examTitle: session.exam.title,
+      weakTags,
+      wrongQuestions,
+    });
+  } catch (err) {
+    if (err instanceof PromptInjectionError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -369,7 +378,8 @@ Do not repeat the question text back to them.`;
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
+      system: prompt.system,
+      messages: [{ role: 'user', content: prompt.user }],
     });
 
     const aiText = (message.content[0] as any).text;
