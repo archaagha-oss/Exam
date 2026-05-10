@@ -296,9 +296,9 @@ exam-taking.
 
 ## D7 — Concurrent-scale ceiling and WebSocket horizontal scaling
 
-- **Status:** Open (needs product input)
+- **Status:** Decided — Option 2 (multi-school peak day, ~5,000 concurrent students). Stage 3 work begins cycle 3.0a.
 - **Raised:** `docs/00-audit.md` §12 Q5
-- **Owner:** product + infra
+- **Implemented:** in flight (cycle 3.0a)
 
 ### Context
 
@@ -323,11 +323,34 @@ We need a target peak concurrency to size:
    architecture entirely (regional shards, dedicated WS tier, Postgres
    read replicas, queue-backed autosave). Not a v1 ask.
 
-### Recommendation
+### Decision
 
-Pending product input. Default planning assumption: **option 2** (multi-school
-peak day). Sizes WS for low-tens-of-thousands without forcing us into a
-geo-sharded architecture.
+Option 2. Realistic K-12 ceiling: a typical UK secondary school running
+mock GCSEs has ~250 students per year group; 20 schools doing that on
+the same morning is 5k. Below that we're under-investing in the wedge
+("works on exam day"); above 50k we'd need a different architecture
+and probably a different conversation about who's buying.
+
+### Consequences
+
+- ✓ Stage 3 plan documented in `docs/06-stage3-plan.md` (cycle 3.0a).
+- ✓ Postgres connection pool exposed via env (`apps/api/src/lib/prisma.ts`)
+  so ops can tune for the multi-replica deploy without rebuilding.
+- ✓ WS broadcast abstraction landed (`apps/api/src/lib/wsBroadcast.ts`):
+  in-process implementation today, Redis pub/sub implementation lands in
+  cycle 3.0b once the abstraction is in production for a release cycle.
+- ✓ Load-test scaffolding (`scripts/load-test/`) targets 5k concurrent
+  WS + 10k req/s of HTTP autosave so we can negotiate with numbers.
+- 〇 Redis pub/sub WS fan-out itself (cycle 3.0b — own cycle).
+- 〇 HTTP autosave path becomes authoritative; WS `session:answer`
+  becomes optimistic-only (cycle 3.0c).
+- 〇 Postgres read-replica wiring (deferred — D7 Option 2 doesn't need
+  it; if peak-day numbers from the load test push past 5k, revisit).
+
+### Recommendation history
+
+Pending product input was the original status; pre-decision recommendation
+was Option 2 ("multi-school peak day"). Ratified 2026-05-10.
 
 ### Consequences
 
