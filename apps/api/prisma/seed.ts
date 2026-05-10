@@ -29,7 +29,7 @@ async function main() {
       email: 'superadmin@demo.school.edu',
       passwordHash: superAdminPassword,
       name: 'Platform Owner',
-      role: Role.SUPER_ADMIN,
+      role: Role.PLATFORM_ADMIN,
       schoolId: null,
     },
   });
@@ -44,7 +44,7 @@ async function main() {
       email: 'admin@demo.school.edu',
       passwordHash: adminPassword,
       name: 'School Admin',
-      role: Role.ADMIN,
+      role: Role.SCHOOL_ADMIN,
       schoolId: school.id,
     },
   });

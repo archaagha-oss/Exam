@@ -1,6 +1,6 @@
 // apps/api/src/modules/superadmin/superadmin.router.ts
 //
-// Super-admin routes — accessible only to SUPER_ADMIN role
+// Super-admin routes — accessible only to PLATFORM_ADMIN role
 // These operate across all schools (use platformClient, not tenant client)
 // Mounted at /api/v1/platform
 
@@ -13,7 +13,7 @@ import { platformClient } from '../../lib/tenant';
 const router = Router();
 
 function isSuperAdmin(req: Request, res: Response, next: Function) {
-  if (!req.user || req.user.role !== 'SUPER_ADMIN') {
+  if (!req.user || req.user.role !== 'PLATFORM_ADMIN') {
     res.status(403).json({ error: 'Super admin only' }); return;
   }
   next();
@@ -77,7 +77,7 @@ router.post('/schools', async (req: Request, res: Response) => {
           email: adminEmail.toLowerCase(),
           name: adminName,
           passwordHash,
-          role: 'ADMIN',
+          role: 'SCHOOL_ADMIN',
         },
       },
     },
@@ -101,7 +101,7 @@ router.get('/schools/:id', async (req: Request, res: Response) => {
     include: {
       _count: { select: { users: true, exams: true } },
       users: {
-        where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+        where: { role: { in: ['SCHOOL_ADMIN', 'PLATFORM_ADMIN'] } },
         select: { id: true, name: true, email: true, role: true, lastLoginAt: true, isActive: true },
         take: 10,
       },

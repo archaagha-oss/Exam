@@ -87,7 +87,7 @@ router.post('/users', async (req: Request, res: Response) => {
     name: z.string().min(1),
     email: z.string().email(),
     password: z.string().min(8),
-    role: z.enum(['STUDENT', 'TEACHER', 'ADMIN']),
+    role: z.enum(['STUDENT', 'TEACHER', 'SCHOOL_ADMIN']),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() }); return; }
@@ -115,7 +115,7 @@ router.post('/users', async (req: Request, res: Response) => {
 router.put('/users/:id', async (req: Request, res: Response) => {
   const schema = z.object({
     name: z.string().min(1).optional(),
-    role: z.enum(['STUDENT', 'TEACHER', 'ADMIN']).optional(),
+    role: z.enum(['STUDENT', 'TEACHER', 'SCHOOL_ADMIN']).optional(),
     isActive: z.boolean().optional(),
   });
   const parsed = schema.safeParse(req.body);

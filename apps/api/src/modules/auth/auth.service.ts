@@ -63,7 +63,10 @@ export async function refresh(token: string) {
     newFamilyId = await issueFamily(userId);
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { school: { select: { id: true, name: true } } },
+  });
   if (!user) throw new Error('User not found');
 
   const payload = {
@@ -77,6 +80,18 @@ export async function refresh(token: string) {
   return {
     accessToken: signAccessToken(payload),
     refreshToken: signRefreshToken(user.id, newFamilyId),
+    // Cycle 2.0a: include user so the silent-refresh-on-mount path used by
+    // every SPA shell can rehydrate the auth store from the cookie alone.
+    // Previously the refresh response only carried tokens, which left the
+    // superadmin App.tsx restoring an undefined user (cycle 1.1b regression).
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      schoolId: user.schoolId,
+      school: user.school,
+    },
   };
 }
 

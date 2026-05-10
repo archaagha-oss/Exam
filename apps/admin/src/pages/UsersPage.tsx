@@ -5,12 +5,12 @@ import api from '../lib/api';
 
 interface User { id: string; name: string; email: string; role: string; isActive: boolean; createdAt: string }
 
-const ROLES = ['STUDENT', 'TEACHER', 'ADMIN'];
+const ROLES = ['STUDENT', 'TEACHER', 'SCHOOL_ADMIN'];
 const ROLE_COLORS: Record<string, string> = {
   STUDENT: 'text-blue-400 bg-blue-950',
   TEACHER: 'text-emerald-400 bg-emerald-950',
-  ADMIN: 'text-amber-400 bg-amber-950',
-  SUPER_ADMIN: 'text-red-400 bg-red-950',
+  SCHOOL_ADMIN: 'text-amber-400 bg-amber-950',
+  PLATFORM_ADMIN: 'text-red-400 bg-red-950',
 };
 
 function UserModal({ user, onClose, onSave }: {

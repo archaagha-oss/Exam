@@ -26,7 +26,7 @@ export class NotFoundError extends Error {
 export interface AuthUser {
   id: string;
   email: string;
-  role: 'STUDENT' | 'TEACHER' | 'ADMIN' | 'SUPER_ADMIN';
+  role: 'STUDENT' | 'TEACHER' | 'SCHOOL_ADMIN' | 'PLATFORM_ADMIN';
   schoolId: string | null;
   name?: string;
 }
@@ -36,7 +36,7 @@ export interface AuthUser {
  * Super-admins bypass the school check.
  */
 export function assertSameSchool(user: AuthUser, resourceSchoolId: string | null | undefined) {
-  if (user.role === 'SUPER_ADMIN') return;
+  if (user.role === 'PLATFORM_ADMIN') return;
   if (!user.schoolId) throw new ForbiddenError('User has no school');
   if (resourceSchoolId !== user.schoolId) throw new NotFoundError(); // 404, not 403, to avoid leaking existence
 }
@@ -72,10 +72,10 @@ export async function findUserForUser(userId: string, user: AuthUser) {
 
 /**
  * Assert a teacher actually owns or proctors an exam (extra check on top of
- * school membership). Admins and SUPER_ADMINs skip this.
+ * school membership). Admins and PLATFORM_ADMINs skip this.
  */
 export async function assertCanManageExam(examId: string, user: AuthUser) {
-  if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') return;
+  if (user.role === 'PLATFORM_ADMIN' || user.role === 'SCHOOL_ADMIN') return;
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
     select: {

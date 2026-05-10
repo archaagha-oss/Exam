@@ -11,9 +11,9 @@ delete or rewrite history — supersede with a new ID and link.
 
 ## D1 — `SUPER_ADMIN` role: split into vendor + customer admins
 
-- **Status:** Open (recommendation: split)
+- **Status:** Decided — Option 1 (split). Implemented in cycle 2.0a.
 - **Raised:** Cycle 0.2, batch 1
-- **Owner:** unassigned
+- **Implemented:** Cycle 2.0a (branch `claude/stage-2-cycle-2-0a-role-split`)
 
 ### Context
 
@@ -53,13 +53,11 @@ that depends on role.
 
 ### Consequences
 
-- Schema migration (Stage 1)
-- All `/platform/*` routes get a hard guard: `req.user.role === 'PLATFORM_ADMIN'`
-- All `/admin/*` routes get a hard guard: `req.user.role === 'SCHOOL_ADMIN' && req.user.schoolId === req.params.schoolId`
-- Audit-log every cross-tenant action by `PLATFORM_ADMIN` (support impersonation, etc.)
-- The current `apps/superadmin` portal becomes the vendor Platform Admin
-  portal — and inherits the audit's P0 fixes (no `localStorage` token, real
-  Dockerfile, dedicated nginx vhost on a non-customer domain).
+- ✓ Schema migration shipped: `prisma/migrations/20260510120000_2_role_split_d1/`
+- ✓ All `/platform/*` routes guard `req.user.role === 'PLATFORM_ADMIN'`
+- ✓ All `requireRole('SCHOOL_ADMIN', 'PLATFORM_ADMIN')` (formerly `'ADMIN', 'SUPER_ADMIN'`) flows scope by `schoolId` via `tenantScope()` (cycle 1.1a) or `canManageExam()` / `canProctorExam()`.
+- ✓ The `apps/superadmin` portal is now the vendor Platform Admin portal (cycle 1.1b).
+- 〇 Audit-log every cross-tenant action by `PLATFORM_ADMIN` — partial: existing audit middleware fires on writes; explicit cross-tenant impersonation tracking is a follow-up.
 - See also D6 — portal consolidation depends on this split.
 
 ---

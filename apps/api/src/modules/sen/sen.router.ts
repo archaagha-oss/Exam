@@ -18,7 +18,7 @@ const arrangementSchema = z.object({
   notes:              z.string().max(1000).optional(),
 });
 
-// ── ADMIN / SENCO: manage student arrangements ─────────────
+// ── SCHOOL_ADMIN / SENCO: manage student arrangements ─────────────
 
 // GET /api/v1/sen/arrangements  — list all students with SEN arrangements in school
 router.get('/arrangements', authenticate, isAdmin, async (req: Request, res: Response) => {

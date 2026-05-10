@@ -18,7 +18,7 @@ export default function LoginPage() {
     try {
       const { data } = await axios.post('/api/v1/auth/login', { email, password });
       const { accessToken, user } = data.data;
-      if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      if (!['SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(user.role)) {
         setError('This portal is for administrators only.'); return;
       }
       setAuth(accessToken, user);
