@@ -7,8 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/student\" \"npm run dev --workspace=apps/console\" \"npm run dev --workspace=apps/superadmin\"",
-    "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/student && npm run build --workspace=apps/console && npm run build --workspace=apps/superadmin",
+    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/student\" \"npm run dev --workspace=apps/console\" \"npm run dev --workspace=apps/platform\"",
+    "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/student && npm run build --workspace=apps/console && npm run build --workspace=apps/platform",
     "db:migrate": "npm run db:migrate --workspace=apps/api",
     "db:seed": "npm run db:seed --workspace=apps/api",
     "db:studio": "npm run db:studio --workspace=apps/api",

@@ -1,4 +1,4 @@
-// apps/superadmin/src/App.tsx
+// apps/platform/src/App.tsx
 import { Routes, Route, Navigate, Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from './store/authStore';

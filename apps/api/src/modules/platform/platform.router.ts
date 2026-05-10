@@ -1,8 +1,11 @@
-// apps/api/src/modules/superadmin/superadmin.router.ts
+// apps/api/src/modules/platform/platform.router.ts
 //
-// Super-admin routes — accessible only to PLATFORM_ADMIN role
-// These operate across all schools (use platformClient, not tenant client)
-// Mounted at /api/v1/platform
+// Platform-admin routes — accessible only to PLATFORM_ADMIN role.
+// These operate across all schools (use platformClient, not tenant client).
+// Mounted at /api/v1/platform.
+//
+// Cycle 2.0c renamed this from superadmin/superadmin.router.ts so the
+// directory + file match the post-D1 PLATFORM_ADMIN role.
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
@@ -12,14 +15,14 @@ import { platformClient } from '../../lib/tenant';
 
 const router = Router();
 
-function isSuperAdmin(req: Request, res: Response, next: Function) {
+function isPlatformAdmin(req: Request, res: Response, next: Function) {
   if (!req.user || req.user.role !== 'PLATFORM_ADMIN') {
-    res.status(403).json({ error: 'Super admin only' }); return;
+    res.status(403).json({ error: 'Platform admin only' }); return;
   }
   next();
 }
 
-router.use(authenticate, isSuperAdmin as any);
+router.use(authenticate, isPlatformAdmin as any);
 
 // ── SCHOOLS (all tenants) ──────────────────────────────────
 

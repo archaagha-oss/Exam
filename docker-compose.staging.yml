@@ -100,7 +100,7 @@ services:
       - ./nginx/certbot-www:/var/www/certbot:ro
       - student_build_staging:/var/www/student:ro
       - console_build_staging:/var/www/console:ro
-      - superadmin_build_staging:/var/www/superadmin:ro
+      - platform_build_staging:/var/www/platform:ro
     depends_on:
       api:
         condition: service_healthy
@@ -125,7 +125,7 @@ volumes:
   redisdata_staging:
   student_build_staging:
   console_build_staging:
-  superadmin_build_staging:
+  platform_build_staging:
 
 networks:
   internal:

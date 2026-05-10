@@ -32,7 +32,7 @@ import qtiRouter from './modules/qti/qti.router';
 import assessmentRouter from './modules/analytics/assessment.router';
 import senRouter from './modules/sen/sen.router';
 import securityRouter from './modules/security/security.router';
-import superadminRouter from './modules/superadmin/superadmin.router';
+import platformRouter from './modules/platform/platform.router';
 import integrityRouter from './modules/integrity/integrity.router';
 
 const app = express();
@@ -153,7 +153,7 @@ api.use('/qti', qtiRouter);
 api.use('/assessment', assessmentRouter);
 api.use('/sen', senRouter);
 api.use('/security', securityRouter);
-api.use('/platform', superadminRouter);
+api.use('/platform', platformRouter);
 api.use('/integrity', integrityRouter);
 
 app.use('/api/v1', api);

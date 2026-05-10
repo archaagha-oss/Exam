@@ -1,4 +1,4 @@
-// apps/superadmin/src/pages/OverviewPage.tsx
+// apps/platform/src/pages/OverviewPage.tsx
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 
