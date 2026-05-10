@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
 import { verifyAccessToken } from '../lib/jwt';
 import prisma from '../lib/prisma';
+import { broadcaster } from '../lib/wsBroadcast';
 
 export interface AuthenticatedClient {
   ws: WebSocket;
@@ -14,10 +15,12 @@ export interface AuthenticatedClient {
   isStale: boolean;
 }
 
-// sessionId → student client
+// sessionId → AuthenticatedClient. This is the WS server's auth-state map
+// (last heartbeat, role, examId). Routing — "send a message to this
+// session" / "broadcast to this exam's proctors" — goes through
+// `broadcaster` (lib/wsBroadcast.ts) so cycle 3.0b can swap the in-process
+// implementation for a Redis pub/sub one without touching this file.
 export const sessionClients = new Map<string, AuthenticatedClient>();
-// examId → Set of proctor websockets
-export const proctorRooms = new Map<string, Set<WebSocket>>();
 
 const STALE_THRESHOLD_MS = 45_000; // 45s without heartbeat = stale
 const HEARTBEAT_CHECK_MS = 15_000; // check every 15s
@@ -81,7 +84,10 @@ export function setupWebSocket(server: http.Server) {
       isStale: false,
     };
 
-    if (sessionId) sessionClients.set(sessionId, client);
+    if (sessionId) {
+      sessionClients.set(sessionId, client);
+      broadcaster.registerSessionSocket(sessionId, ws);
+    }
 
     if (examId && ['TEACHER', 'SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(user.role)) {
       // Phase 3: enforce access control before joining proctor room
@@ -91,8 +97,7 @@ export function setupWebSocket(server: http.Server) {
         ws.close(4003, 'Access denied to this exam');
         return;
       }
-      if (!proctorRooms.has(examId)) proctorRooms.set(examId, new Set());
-      proctorRooms.get(examId)!.add(ws);
+      broadcaster.joinProctorRoom(examId, ws);
     }
 
     ws.send(
@@ -115,20 +120,24 @@ export function setupWebSocket(server: http.Server) {
     ws.on('close', () => {
       if (sessionId) {
         sessionClients.delete(sessionId);
+        broadcaster.unregisterSessionSocket(sessionId);
         // Notify proctors this student disconnected
         if (examId) {
-          broadcastToProctors(examId, {
+          broadcaster.broadcastToProctors(examId, {
             type: 'proctor:student_disconnected',
             payload: { sessionId },
             timestamp: new Date().toISOString(),
           });
         }
       }
-      if (examId) proctorRooms.get(examId)?.delete(ws);
+      if (examId) broadcaster.leaveProctorRoom(examId, ws);
     });
 
     ws.on('error', () => {
-      if (sessionId) sessionClients.delete(sessionId);
+      if (sessionId) {
+        sessionClients.delete(sessionId);
+        broadcaster.unregisterSessionSocket(sessionId);
+      }
     });
   });
 
@@ -159,7 +168,7 @@ export function setupWebSocket(server: http.Server) {
             })
             .catch(() => null);
 
-          broadcastToProctors(client.examId, {
+          broadcaster.broadcastToProctors(client.examId, {
             type: 'proctor:student_stale',
             payload: {
               sessionId: sid,
@@ -174,6 +183,7 @@ export function setupWebSocket(server: http.Server) {
       // Remove truly dead connections
       if (client.ws.readyState !== WebSocket.OPEN) {
         sessionClients.delete(sid);
+        broadcaster.unregisterSessionSocket(sid);
       }
     }
   }, HEARTBEAT_CHECK_MS);
@@ -218,7 +228,7 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
       if (client.sessionId && client.examId) {
         const snapshot = await buildSessionSnapshot(client.sessionId);
         if (snapshot) {
-          broadcastToProctors(client.examId, {
+          broadcaster.broadcastToProctors(client.examId, {
             type: 'proctor:update',
             payload: snapshot,
             timestamp: ts,
@@ -250,7 +260,7 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
       if (client.examId) {
         const snapshot = await buildSessionSnapshot(payload.sessionId);
         if (snapshot)
-          broadcastToProctors(client.examId, {
+          broadcaster.broadcastToProctors(client.examId, {
             type: 'proctor:update',
             payload: snapshot,
             timestamp: ts,
@@ -294,7 +304,7 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
           })
           .catch(() => null);
 
-        broadcastToProctors(client.examId, {
+        broadcaster.broadcastToProctors(client.examId, {
           type: 'proctor:violation',
           payload: {
             sessionId: payload.sessionId,
@@ -310,7 +320,7 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
         // Also push updated snapshot
         const snapshot = await buildSessionSnapshot(payload.sessionId);
         if (snapshot)
-          broadcastToProctors(client.examId, {
+          broadcaster.broadcastToProctors(client.examId, {
             type: 'proctor:update',
             payload: snapshot,
             timestamp: ts,
@@ -429,21 +439,18 @@ async function getExamSnapshots(examId: string) {
 }
 
 // ── Exports used by REST routes ──────────────────────────────
+//
+// Cycle 3.0a: thin wrappers that delegate to the broadcaster, so REST
+// routes that send WS messages keep working through cycle 3.0b's swap to
+// Redis pub/sub. Existing call sites in apps/api/src/modules/sessions/
+// don't need to change.
 
 export function broadcastToProctors(examId: string, message: object) {
-  const sockets = proctorRooms.get(examId);
-  if (!sockets) return;
-  const data = JSON.stringify(message);
-  for (const ws of sockets) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(data);
-  }
+  broadcaster.broadcastToProctors(examId, message);
 }
 
 export function sendToSession(sessionId: string, message: object) {
-  const client = sessionClients.get(sessionId);
-  if (client?.ws.readyState === WebSocket.OPEN) {
-    client.ws.send(JSON.stringify(message));
-  }
+  broadcaster.sendToSession(sessionId, message);
 }
 
 export { getExamSnapshots, buildSessionSnapshot };
