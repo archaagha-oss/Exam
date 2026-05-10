@@ -1,19 +1,29 @@
 # SecureExam
 
-A browser-based exam platform for schools — five React portals plus an Express
+A browser-based exam platform for K-12 schools. Three frontend SPAs
+(student, school console, vendor platform admin) plus a
+Node + Express + Prisma + Postgres + Redis backend.
 
-- Prisma API.
-
-**Read these first:**
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current state of the
-  system, key invariants, data model, auth flow, outstanding debt.
-- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — what browser lockdown
-  does and does not protect against. **Read this before selling
-  high-stakes assessment.**
-- [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — incident playbook, backup
-  procedure, deployment.
-- Phase history (1–9 evolution): [`docs/archive/`](docs/archive).
+> **Status (May 2026):** mid-stage rebuild. The current product brief, 12-month
+> vision, and decision log live in `docs/`:
+>
+> - [`docs/00-audit.md`](docs/00-audit.md) — ground-truth audit of the
+>   codebase as of cycle 0.1.
+> - [`docs/01-product.md`](docs/01-product.md) — who buys this, who uses
+>   it, what it ships.
+> - [`docs/02-north-star.md`](docs/02-north-star.md) — 12-month vision +
+>   anti-patterns.
+> - [`docs/decisions.md`](docs/decisions.md) — ADR log (D1–D7).
+> - [`docs/03-stage1-closure.md`](docs/03-stage1-closure.md) — Stage 1
+>   security & stability hardening, what shipped vs deferred.
+> - [`docs/04-stage2-prereqs-closure.md`](docs/04-stage2-prereqs-closure.md)
+>   — Stage 2 prereqs (D1 role split, D6 portal merge, D4 feature flags,
+>   cross-tenant impersonation audit).
+>
+> Older operational docs (`docs/ARCHITECTURE.md`, `docs/THREAT_MODEL.md`,
+> `docs/RUNBOOK.md`) describe the pre-Stage-1 state and are accurate where
+> they overlap with the closure docs above. Phase 1–9 history lives in
+> [`docs/archive/`](docs/archive).
 
 ---
 
@@ -58,12 +68,17 @@ npm run db:seed       # creates demo school, teacher, students, and one exam
 npm run dev
 ```
 
-| App            | URL                          | Credentials                           |
-| -------------- | ---------------------------- | ------------------------------------- |
-| Student Portal | http://localhost:5173        | student1@demo.school.edu / student123 |
-| Teacher Portal | http://localhost:5174        | teacher@demo.school.edu / teacher123  |
-| API            | http://localhost:4000/api/v1 | —                                     |
-| API Health     | http://localhost:4000/health | —                                     |
+| App                | URL                          | Audience                                           | Demo creds                                |
+| ------------------ | ---------------------------- | -------------------------------------------------- | ----------------------------------------- |
+| Student exam page  | http://localhost:5173        | STUDENT                                            | `student1@demo.school.edu` / `student123` |
+| School console     | http://localhost:5174        | TEACHER + SCHOOL_ADMIN (role-aware sidebar)        | `teacher@demo.school.edu` / `teacher123`  |
+| Platform admin     | http://localhost:5176        | PLATFORM_ADMIN (vendor-only)                       | `admin@demo.school.edu` / `admin123` *(seeded as PLATFORM_ADMIN per `prisma/seed.ts`)* |
+| API                | http://localhost:4000/api/v1 | —                                                  | —                                         |
+| API health         | http://localhost:4000/health/ready | —                                            | —                                         |
+
+The school console at `:5174` is the merged customer-side surface from
+cycle 2.0b (D6) — TEACHER and SCHOOL_ADMIN both land at `/`; the Admin
+section of the sidebar renders only for SCHOOL_ADMIN / PLATFORM_ADMIN.
 
 ---
 
@@ -72,23 +87,63 @@ npm run dev
 ```
 secureexam/
 ├── apps/
-│   ├── api/                    # Node.js + Express + Prisma backend
+│   ├── api/                    Node.js + Express + Prisma backend
 │   │   ├── src/
-│   │   │   ├── modules/        # auth, users, schools, questions, exams, sessions, reports, pins
-│   │   │   ├── websocket/      # WebSocket server (violations, heartbeat)
-│   │   │   ├── middleware/     # JWT auth, role guards
-│   │   │   └── lib/            # prisma client, jwt helpers
+│   │   │   ├── modules/        auth, users, schools, questions, exams,
+│   │   │   │                   sessions, reports, pins, admin, audit,
+│   │   │   │                   exports, grading, ai, media, sen,
+│   │   │   │                   security, integrity, analytics, qti,
+│   │   │   │                   assessment, platform
+│   │   │   ├── websocket/      bearer.<jwt> subprotocol auth + heartbeat
+│   │   │   ├── middleware/     auth (JWT), idempotency, requestId
+│   │   │   └── lib/            prisma, jwt (HS256-pinned), examAccess
+│   │   │                       (tenantScope + auditFromReq), featureFlags,
+│   │   │                       auditQuery (impersonation ledger), sentry
+│   │   │                       (no-op without SENTRY_DSN), env, redis,
+│   │   │                       logger (pino), metrics (prom-client)
 │   │   └── prisma/
-│   │       ├── schema.prisma   # Full database schema
-│   │       └── seed.ts         # Demo data seeder
-│   ├── student/                # React + Vite student lockdown browser (port 5173)
-│   └── teacher/                # React + Vite teacher portal (port 5174)
+│   │       ├── schema.prisma   Full schema; Role = STUDENT | TEACHER |
+│   │       │                   SCHOOL_ADMIN | PLATFORM_ADMIN
+│   │       └── seed.ts         Demo data
+│   ├── student/                Student exam-taking SPA (port 5173)
+│   ├── console/                Customer-side console (port 5174) — was
+│   │                           apps/teacher + apps/admin pre-D6
+│   └── platform/               Vendor Platform Admin SPA (port 5176) —
+│                               was apps/superadmin pre-2.0c
 ├── packages/
-│   └── shared-types/           # TypeScript types shared across all apps
-├── docker/                     # Dockerfiles + nginx SPA config
-├── nginx/                      # Production reverse proxy config
-└── docker-compose.yml          # Local dev stack
+│   ├── shared-types/           TypeScript types shared across all apps
+│   └── shared-frontend/        Auth store + axios client w/ single-flight
+│                               401 refresh; used by all 3 SPAs
+├── docker/                     Dockerfile.{api,student,console,platform} +
+│                               nginx-spa.conf
+├── nginx/                      Production reverse proxy config (HTTPS;
+│                               5 vhosts)
+├── docker-compose.yml          Local dev (postgres + redis)
+├── docker-compose.prod.yml     Production stack
+├── docker-compose.staging.yml  Staging mirror with self-signed certs
+└── scripts/
+    └── dev-certs.sh            Generates self-signed certs for nginx
+                                HTTPS on a developer's laptop
 ```
+
+---
+
+## Roles
+
+After cycle 2.0a (D1 role split):
+
+| Role             | Where                                  | Scope                                      |
+| ---------------- | -------------------------------------- | ------------------------------------------ |
+| `STUDENT`        | apps/student                           | Own data only                              |
+| `TEACHER`        | apps/console                           | Their own + co-proctored exams             |
+| `SCHOOL_ADMIN`   | apps/console (`/admin/*`)              | Their school's data                        |
+| `PLATFORM_ADMIN` | apps/platform                          | Vendor-side, cross-tenant by design        |
+
+Tenant scoping is enforced at the helper layer (`apps/api/src/lib/examAccess.ts`)
+via `tenantScope(role, schoolId)` and `canManageExam` / `canProctorExam`. The
+static-scan invariant test (`apps/api/test/tenantInvariant.test.ts`) fails CI
+if a router reintroduces `findUnique({ where: { id: req.params.x }})` outside
+the platform admin allowlist.
 
 ---
 
@@ -100,13 +155,13 @@ All authenticated routes require: `Authorization: Bearer <access_token>`
 
 ### Auth
 
-| Method | Path            | Auth   | Description                     |
-| ------ | --------------- | ------ | ------------------------------- |
-| POST   | `/auth/login`   | No     | Login → access + refresh tokens |
-| POST   | `/auth/refresh` | Cookie | Refresh access token            |
-| POST   | `/auth/logout`  | Cookie | Clear refresh token             |
+| Method | Path            | Auth   | Description                                                 |
+| ------ | --------------- | ------ | ----------------------------------------------------------- |
+| POST   | `/auth/login`   | No     | Login → access token + refreshToken cookie + user           |
+| POST   | `/auth/refresh` | Cookie | Cookie-only (P1-7); body fallback removed in cycle 1.3      |
+| POST   | `/auth/logout`  | Cookie | Revoke refresh-token family + clear cookie                  |
 
-### Questions (Teacher only)
+### Questions (TEACHER+)
 
 | Method | Path             | Description                                                     |
 | ------ | ---------------- | --------------------------------------------------------------- |
@@ -115,7 +170,7 @@ All authenticated routes require: `Authorization: Bearer <access_token>`
 | PUT    | `/questions/:id` | Update question                                                 |
 | DELETE | `/questions/:id` | Delete question                                                 |
 
-### Exams (Teacher only)
+### Exams (TEACHER+)
 
 | Method | Path                       | Description                             |
 | ------ | -------------------------- | --------------------------------------- |
@@ -129,37 +184,60 @@ All authenticated routes require: `Authorization: Bearer <access_token>`
 | DELETE | `/exams/:id/items/:itemId` | Remove question                         |
 | PUT    | `/exams/:id/items/reorder` | Reorder `{ itemIds: [...] }`            |
 
-### Sessions (Student)
+### Sessions (STUDENT)
 
 | Method | Path                      | Description                                             |
 | ------ | ------------------------- | ------------------------------------------------------- |
 | GET    | `/sessions/my`            | List available exams + session status                   |
 | POST   | `/sessions`               | Start/resume session `{ examId }`                       |
-| POST   | `/sessions/:id/answer`    | Save answer `{ questionId, selectedIds?, textAnswer? }` |
+| POST   | `/sessions/:id/answer`    | Save answer `{ questionId, selectedIds?, textAnswer? }`. Idempotent (idempotency-key middleware) |
 | POST   | `/sessions/:id/violation` | Report violation `{ type, description? }`               |
 | POST   | `/sessions/:id/submit`    | Submit exam                                             |
 | POST   | `/sessions/:id/unlock`    | Unlock after violation `{ pin, examId }`                |
 | POST   | `/sessions/:id/exit`      | Exit with PIN `{ pin, examId }`                         |
 
-### Reports (Teacher)
+### Reports (TEACHER+)
 
-| Method | Path                                     | Description                                      |
-| ------ | ---------------------------------------- | ------------------------------------------------ |
-| GET    | `/reports/exams/:id`                     | Full results: summary, per-question, per-student |
-| GET    | `/reports/exams/:id/sessions/:sessionId` | Single student detail                            |
+| Method | Path                                     | Description                                                          |
+| ------ | ---------------------------------------- | -------------------------------------------------------------------- |
+| GET    | `/reports/exams/:id`                     | Full results: summary, per-question, per-student. Tenant-scoped.     |
+| GET    | `/reports/exams/:id/sessions/:sessionId` | Single student detail. Tenant-scoped.                                |
 
-### PINs (Teacher)
+### PINs (TEACHER+)
 
-| Method | Path             | Description                                             |
-| ------ | ---------------- | ------------------------------------------------------- |
-| POST   | `/pins/generate` | Generate PINs `{ examId, purposes: ['UNLOCK','EXIT'] }` |
-| GET    | `/pins/:examId`  | Check PIN status (not values)                           |
+| Method | Path             | Description                                                                       |
+| ------ | ---------------- | --------------------------------------------------------------------------------- |
+| POST   | `/pins/generate` | Generate PINs `{ examId, purposes: ['UNLOCK','EXIT'] }`. Idempotent (cycle 1.3).  |
+| GET    | `/pins/:examId`  | Check PIN status (not values). Tenant-scoped via `canManageExam`.                 |
+
+### School Admin (`SCHOOL_ADMIN` + `PLATFORM_ADMIN`)
+
+| Method | Path                                          | Description                                                                |
+| ------ | --------------------------------------------- | -------------------------------------------------------------------------- |
+| POST   | `/admin/users/bulk-import`                    | CSV import (rewritten cycle 2.1a — batched bcrypt + `createMany`, ~8× faster) |
+| POST   | `/admin/exams/:id/close`                      | Close any exam in caller's school. Audit-logged with impersonation flag.   |
+| GET    | `/admin/features`                             | List feature catalogue + this school's enabled state (cycle 2.0e / D4)     |
+| PUT    | `/admin/features/:key`                        | Toggle a feature `{ enabled: boolean }`. Audit-logged (cycle 2.0e / D4).   |
+
+### Platform Admin (`PLATFORM_ADMIN` only)
+
+| Method | Path                       | Description                                                |
+| ------ | -------------------------- | ---------------------------------------------------------- |
+| POST   | `/platform/schools`        | Provision a new school. Audit-logged with impersonation=true (cycle 2.0f). |
+| DELETE | `/platform/schools/:id`    | Offboard a school. Audit-logged with impersonation=true.   |
+| GET    | `/platform/stats`          | Cross-tenant aggregate stats                               |
 
 ---
 
 ## WebSocket Protocol
 
-Connect: `ws://localhost:4000/ws?token=<jwt>&sessionId=<id>&examId=<id>`
+Connect: `ws://localhost:4000/ws?sessionId=<id>&examId=<id>`
+Subprotocol header: `bearer.<jwt>`
+
+The `?token=` query fallback was removed in cycle 1.1b (P1-2) — query
+strings travel through proxy access logs; subprotocol headers do not. Both
+clients (`apps/student/src/pages/ExamSessionPage.tsx` and
+`apps/console/src/hooks/useProctor.ts`) use the subprotocol path.
 
 ### Client → Server
 
@@ -172,11 +250,16 @@ Connect: `ws://localhost:4000/ws?token=<jwt>&sessionId=<id>&examId=<id>`
 ### Server → Client
 
 ```json
-{ "type": "violation:recorded", "payload": { "violationCount": 1, "maxViolations": 3 } }
-{ "type": "session:locked",     "payload": { "reason": "TAB_SWITCH" } }
+{ "type": "pong",                "payload": { "secondsRemaining": 1734 } }
+{ "type": "violation:recorded",  "payload": { "violationCount": 1, "maxViolations": 3 } }
+{ "type": "session:locked",      "payload": { "reason": "TAB_SWITCH" } }
 { "type": "session:force_submit", "payload": { "reason": "Maximum violations reached" } }
-{ "type": "answer:saved",       "payload": { "questionId": "..." } }
+{ "type": "answer:saved",        "payload": { "questionId": "..." } }
 ```
+
+The `secondsRemaining` field on `pong` is the server-authoritative timer
+(cycle 1.2 / P1-3). Client interpolates between pongs for smooth UI but
+snaps to the server value if drift exceeds 3 s.
 
 ---
 
@@ -197,44 +280,51 @@ npm run db:studio
 
 ### Demo accounts (after seeding)
 
-| Role        | Email                      | Password   |
-| ----------- | -------------------------- | ---------- |
-| Admin       | admin@demo.school.edu      | admin123   |
-| Teacher     | teacher@demo.school.edu    | teacher123 |
-| Student 1   | student1@demo.school.edu   | student123 |
-| Student 2   | student2@demo.school.edu   | student123 |
-| Student 3–5 | student3-5@demo.school.edu | student123 |
+| Role             | Email                      | Password   |
+| ---------------- | -------------------------- | ---------- |
+| `PLATFORM_ADMIN` | admin@demo.school.edu      | admin123   |
+| `SCHOOL_ADMIN`   | school.admin@demo.school.edu | admin123 |
+| `TEACHER`        | teacher@demo.school.edu    | teacher123 |
+| `STUDENT` 1      | student1@demo.school.edu   | student123 |
+| `STUDENT` 2      | student2@demo.school.edu   | student123 |
+| `STUDENT` 3–5    | student3-5@demo.school.edu | student123 |
 
 ---
 
 ## Lockdown Browser — Anti-Cheat Features
 
-The student browser (`apps/student`) enforces:
+The student SPA (`apps/student`) enforces:
 
-| Feature                    | Implementation                                                                      |
-| -------------------------- | ----------------------------------------------------------------------------------- |
-| Fullscreen required        | `requestFullscreen()` before exam starts; `fullscreenchange` event monitors exit    |
-| Tab switching              | `visibilitychange` event                                                            |
-| Window blur (Alt+Tab)      | `window.blur` event                                                                 |
-| Right-click                | `contextmenu` event → `preventDefault()`                                            |
-| Keyboard shortcuts         | `keydown` capture: F1–F12, Ctrl+U/C/S/V/A/P/F/H/T/W/N/R, Alt+F4/Tab, Meta+R/C/Q/W/N |
-| Copy/paste/cut             | `copy`, `cut`, `paste` events → `preventDefault()`                                  |
-| Drag & drop                | `dragstart` → `preventDefault()`                                                    |
-| Heartbeat                  | Sent every 15s via WebSocket; server detects disconnection                          |
-| Violation debounce         | Same violation type throttled to once per 2s                                        |
-| PIN lock screen            | After N violations, exam locks; instructor PIN required to resume                   |
-| Auto-submit                | On max violations or timer expiry                                                   |
-| Server-authoritative timer | Client syncs from `startedAt + durationMinutes`, not trusting client clock          |
+| Feature                      | Implementation                                                                      |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| Fullscreen required          | `requestFullscreen()` before exam starts; `fullscreenchange` event monitors exit    |
+| Tab switching                | `visibilitychange` event                                                            |
+| Window blur (Alt+Tab)        | `window.blur` event                                                                 |
+| Right-click                  | `contextmenu` event → `preventDefault()`                                            |
+| Keyboard shortcuts           | `keydown` capture: F1–F12, Ctrl+U/C/S/V/A/P/F/H/T/W/N/R, Alt+F4/Tab, Meta+R/C/Q/W/N |
+| Copy/paste/cut               | `copy`, `cut`, `paste` events → `preventDefault()`                                  |
+| Drag & drop                  | `dragstart` → `preventDefault()`                                                    |
+| Heartbeat                    | Sent every 15s via WebSocket; server detects disconnection                          |
+| Violation debounce           | Same violation type throttled to once per 2s                                        |
+| PIN lock screen              | After N violations, exam locks; instructor PIN required to resume                   |
+| Auto-submit                  | On max violations or timer expiry                                                   |
+| **Server-authoritative timer** | WS heartbeat reply carries canonical `secondsRemaining` (cycle 1.2)               |
+| **Persistent answer queue**  | IndexedDB-backed; survives tab close + network blip (cycle 1.2)                     |
+
+Tier-3 sit-down exams need Safe Exam Browser on Windows (Stage 5
+roadmap; placeholder feature flag `seb-tier-3` already in catalogue).
 
 ---
 
 ## PIN Security
 
 - PINs are 4-digit random numbers generated with `crypto.randomInt`
-- Stored as **bcrypt hashes** (cost factor 10) in the `exam_pins` table
+- Stored as **bcrypt hashes (cost 12)** in the `exam_pins` table
 - Plain PIN is returned **once** at generation time and never stored
 - Unlock PINs can be reused within the exam; Exit PINs are single-use
 - Expire after 24 hours automatically
+- `POST /pins/generate` is idempotency-key safe (cycle 1.3 / P1-15) — a
+  retried request returns the cached response, not a fresh PIN set
 
 ---
 
@@ -256,44 +346,43 @@ cp .env.production.example .env
 nano .env   # fill in all values
 ```
 
+The API refuses to start if `JWT_SECRET` / `JWT_REFRESH_SECRET` are
+missing, default, or shorter than 32 chars (`apps/api/src/lib/env.ts`).
+Set `SENTRY_DSN` to enable error tracking (cycle 1.4); leave it unset
+for a no-op.
+
 ### 3. Deploy
 
 ```bash
-# Pull images and start
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml --profile migrate up migrate
 docker compose -f docker-compose.prod.yml up -d
-
-# Seed initial data (first deploy only)
-docker compose -f docker-compose.prod.yml exec api node -e "
-  const { execSync } = require('child_process');
-  execSync('npx ts-node prisma/seed.ts', { stdio: 'inherit' });
-"
 ```
 
 ### 4. Update nginx hostnames
 
-Edit `nginx/nginx.conf` and replace `exam.yourschool.edu` and `teacher.yourschool.edu` with your actual domains.
+Edit `nginx/nginx.conf` and replace the four customer subdomains
+(`exam.yourschool.edu`, `console.yourschool.edu`, `api.yourschool.edu`)
+plus the vendor subdomain (`platform.secureexam.app`) with your actual
+DNS. Each vhost has its own `ssl_certificate` path under
+`/etc/nginx/ssl/<domain>/`.
 
 ### 5. SSL (Let's Encrypt)
 
 ```bash
 apt-get install -y certbot
-certbot certonly --standalone -d exam.yourschool.edu -d teacher.yourschool.edu
-# Then update nginx.conf to enable the HTTPS server blocks and mount certs
+certbot certonly --standalone -d exam.yourschool.edu \
+                              -d console.yourschool.edu \
+                              -d api.yourschool.edu \
+                              -d platform.secureexam.app
+# certs land at /etc/letsencrypt/live/<domain>/{fullchain.pem,privkey.pem}
+# bind-mount that path to /etc/nginx/ssl/ in docker-compose.prod.yml
 ```
 
----
-
-## Adding New Features (Phase 2 checklist)
-
-When you're ready to move to Phase 2 (Live Proctoring):
-
-- [ ] Teacher live proctor page (`/teacher/exams/:id/live`)
-- [ ] Teacher connects to WebSocket with `examId` param → joins proctor room
-- [ ] Server broadcasts `proctor:violation` and `proctor:update` events (stubs already in WebSocket server)
-- [ ] Teacher can send `force-submit` and `unlock` via `POST /sessions/:id/force-submit`
-- [ ] Heartbeat timeout detection → mark session as disconnected in proctor view
+For a non-prod environment (laptop or staging without real DNS), run
+`./scripts/dev-certs.sh` to generate self-signed certs for the four
+vhosts and add `127.0.0.1 exam.yourschool.edu …` entries to your hosts
+file.
 
 ---
 
@@ -306,14 +395,26 @@ When you're ready to move to Phase 2 (Live Proctoring):
 | ORM              | Prisma 5                                         |
 | Database         | PostgreSQL 15                                    |
 | Cache / pub-sub  | Redis 7                                          |
-| WebSocket        | `ws` library                                     |
+| WebSocket        | `ws` library, `bearer.<jwt>` subprotocol auth    |
 | Validation       | Zod                                              |
-| Auth             | JWT (access 15m + refresh 7d in httpOnly cookie) |
-| Passwords        | bcrypt (cost 12)                                 |
+| Auth             | JWT HS256-pinned (access 15m + refresh 7d in httpOnly cookie) |
+| Passwords / PINs | bcrypt (cost 12 everywhere — cycle 1.3 / P1-5 closed the cost-10 outlier) |
+| Error tracking   | Sentry (optional; no-op without `SENTRY_DSN`)    |
 | Frontend         | React 18 + TypeScript + Vite                     |
 | Routing          | React Router v6                                  |
-| State            | Zustand                                          |
+| State            | Zustand (memory-only token; httpOnly refresh cookie) |
 | Styling          | Tailwind CSS v3                                  |
 | Containerization | Docker + Docker Compose                          |
-| Reverse proxy    | Nginx                                            |
-| CI/CD            | GitHub Actions                                   |
+| Reverse proxy    | Nginx (TLS 1.2/1.3, HSTS preload, OCSP stapling) |
+| CI/CD            | GitHub Actions (lint, typecheck, test, build)    |
+
+---
+
+## Contributing
+
+PRs follow the template at [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md):
+*Summary / Audit-link / Test-plan / Risk / Out-of-scope*. New routes that
+mutate by id need to use `findFirst` + `tenantScope` (the static-scan
+test enforces it). New audit writes that PLATFORM_ADMIN can trigger
+should use `auditFromReq` so the impersonation flag gets set
+correctly (cycle 2.0f).

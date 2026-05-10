@@ -78,9 +78,8 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./nginx/certbot-www:/var/www/certbot:ro
       - student_build:/var/www/student:ro
-      - teacher_build:/var/www/teacher:ro
-      - admin_build:/var/www/admin:ro
-      - superadmin_build:/var/www/superadmin:ro
+      - console_build:/var/www/console:ro
+      - platform_build:/var/www/platform:ro
     depends_on:
       api:
         condition: service_healthy
@@ -112,9 +111,8 @@ volumes:
   pgdata:
   redisdata:
   student_build:
-  teacher_build:
-  admin_build:
-  superadmin_build:
+  console_build:
+  platform_build:
 
 networks:
   internal:

@@ -46,8 +46,9 @@ export function setupWebSocket(server: http.Server) {
     // Token auth: ONLY via Sec-WebSocket-Protocol "bearer.<jwt>" subprotocol.
     // The ?token= query fallback was removed in cycle 1.1b (P1-2) — query
     // params travel through every proxy access log on the path; subprotocol
-    // headers do not. Both clients (apps/student/ExamSessionPage,
-    // apps/teacher/useProctor) were migrated in the same cycle.
+    // headers do not. Both clients (apps/student/ExamSessionPage and
+    // apps/console/hooks/useProctor — was apps/teacher/useProctor pre-D6)
+    // were migrated in the same cycle.
     const subprotoHeader = (req.headers['sec-websocket-protocol'] as string | undefined) ?? '';
     const protoTokens = subprotoHeader
       .split(',')
@@ -82,7 +83,7 @@ export function setupWebSocket(server: http.Server) {
 
     if (sessionId) sessionClients.set(sessionId, client);
 
-    if (examId && ['TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+    if (examId && ['TEACHER', 'SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(user.role)) {
       // Phase 3: enforce access control before joining proctor room
       const { canProctorExam } = await import('../lib/examAccess');
       const allowed = await canProctorExam(user.sub, user.role, user.schoolId, examId);
@@ -320,7 +321,7 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
 
     // ── Proctor: request full snapshot of all sessions ──
     case 'proctor:request_snapshot': {
-      if (!['TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(client.role)) break;
+      if (!['TEACHER', 'SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(client.role)) break;
       if (!payload.examId) break;
       const sessions = await getExamSnapshots(payload.examId);
       client.ws.send(

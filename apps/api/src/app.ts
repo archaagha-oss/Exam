@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { requestId } from './middleware/requestId';
 import { logger } from './lib/logger';
 import { registry, httpRequestDuration } from './lib/metrics';
+import { captureError } from './lib/sentry';
 import prisma from './lib/prisma';
 
 import authRouter from './modules/auth/auth.router';
@@ -31,7 +32,7 @@ import qtiRouter from './modules/qti/qti.router';
 import assessmentRouter from './modules/analytics/assessment.router';
 import senRouter from './modules/sen/sen.router';
 import securityRouter from './modules/security/security.router';
-import superadminRouter from './modules/superadmin/superadmin.router';
+import platformRouter from './modules/platform/platform.router';
 import integrityRouter from './modules/integrity/integrity.router';
 
 const app = express();
@@ -152,7 +153,7 @@ api.use('/qti', qtiRouter);
 api.use('/assessment', assessmentRouter);
 api.use('/sen', senRouter);
 api.use('/security', securityRouter);
-api.use('/platform', superadminRouter);
+api.use('/platform', platformRouter);
 api.use('/integrity', integrityRouter);
 
 app.use('/api/v1', api);
@@ -176,6 +177,14 @@ app.use(
         { err: err.stack || err.message, requestId: (_req as express.Request).id },
         'unhandled error'
       );
+      // Cycle 1.4 / P1-10: forward 5xxs to Sentry. 4xxs are client problems
+      // by definition and would only add noise. Sentry is optional — the
+      // shim no-ops without SENTRY_DSN.
+      captureError(err, {
+        requestId: (_req as express.Request).id,
+        path: (_req as express.Request).path,
+        method: (_req as express.Request).method,
+      });
     }
     const safeMessage =
       status < 500

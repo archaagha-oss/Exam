@@ -1,4 +1,4 @@
-// apps/teacher/src/components/RichText.tsx
+// apps/student/src/components/RichText.tsx
 // Renders question body text with LaTeX math support.
 // Supports inline math: $...$  and display math: $$...$$
 // Falls back to plain text if KaTeX not available.

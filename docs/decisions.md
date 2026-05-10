@@ -11,11 +11,15 @@ delete or rewrite history — supersede with a new ID and link.
 
 ## D1 — `SUPER_ADMIN` role: split into vendor + customer admins
 
-- **Status:** Open (recommendation: split)
+- **Status:** Decided — Option 1 (split). Implemented in cycle 2.0a.
 - **Raised:** Cycle 0.2, batch 1
-- **Owner:** unassigned
+- **Implemented:** Cycle 2.0a (branch `claude/stage-2-cycle-2-0a-role-split`)
 
 ### Context
+
+*Pre-decision state, preserved for the record. The schema and code below
+describe what was true before cycle 2.0a; see Consequences for what is true
+now.*
 
 The schema today (`apps/api/prisma/schema.prisma`) has `Role.SUPER_ADMIN`
 with `User.schoolId` nullable, so a SUPER_ADMIN can have no school
@@ -53,13 +57,11 @@ that depends on role.
 
 ### Consequences
 
-- Schema migration (Stage 1)
-- All `/platform/*` routes get a hard guard: `req.user.role === 'PLATFORM_ADMIN'`
-- All `/admin/*` routes get a hard guard: `req.user.role === 'SCHOOL_ADMIN' && req.user.schoolId === req.params.schoolId`
-- Audit-log every cross-tenant action by `PLATFORM_ADMIN` (support impersonation, etc.)
-- The current `apps/superadmin` portal becomes the vendor Platform Admin
-  portal — and inherits the audit's P0 fixes (no `localStorage` token, real
-  Dockerfile, dedicated nginx vhost on a non-customer domain).
+- ✓ Schema migration shipped: `prisma/migrations/20260510120000_2_role_split_d1/`
+- ✓ All `/platform/*` routes guard `req.user.role === 'PLATFORM_ADMIN'`
+- ✓ All `requireRole('SCHOOL_ADMIN', 'PLATFORM_ADMIN')` (formerly `'ADMIN', 'SUPER_ADMIN'`) flows scope by `schoolId` via `tenantScope()` (cycle 1.1a) or `canManageExam()` / `canProctorExam()`.
+- ✓ The `apps/superadmin` portal is now the vendor Platform Admin portal (cycle 1.1b).
+- 〇 Audit-log every cross-tenant action by `PLATFORM_ADMIN` — partial: existing audit middleware fires on writes; explicit cross-tenant impersonation tracking is a follow-up.
 - See also D6 — portal consolidation depends on this split.
 
 ---
@@ -146,9 +148,9 @@ prop or theme switch at the app-shell level is a small change.
 
 ## D4 — AI feature flag: where does it live?
 
-- **Status:** Open (recommendation: dedicated `Feature` table)
+- **Status:** Decided — Option 2 (dedicated `Feature` + `SchoolFeature` tables). Implemented in cycle 2.0e.
 - **Raised:** Cycle 0.2, batch 3 (AI authoring stance)
-- **Owner:** unassigned
+- **Implemented:** Cycle 2.0e (branch `claude/stage-2-cycle-2-0e-d4-feature-flags`)
 
 ### Context
 
@@ -176,12 +178,27 @@ naturally into our `AuditLog` discipline.
 
 ### Consequences
 
-- New tables in Stage 1 schema migration
-- A small admin UI for the IT lead to toggle features (Stage 2)
-- Server-side helper: `await schoolFeatureEnabled(schoolId, 'ai-authoring')`
-  with Redis-cached results
-- First flag: `ai-authoring`. Second-likely: `live-proctoring`. Third:
-  `seb-tier-3`.
+- ✓ New tables shipped: `prisma/migrations/20260510130000_3_d4_feature_flags/`
+  — `features` (catalogue, vendor-managed) + `school_features` (per-tenant
+  toggle, with `enabledById` / `enabledAt` / `disabledAt` for the audit trail).
+- ✓ Server-side helper: `apps/api/src/lib/featureFlags.ts` — fail-closed,
+  Redis-cached at 60s TTL, `setSchoolFeature()` flips the toggle and the
+  caller audit-logs via the existing `AuditLog` table (new `FEATURE_ENABLED`
+  / `FEATURE_DISABLED` `AuditAction` values).
+- ✓ AI gate wired: `apps/api/src/modules/ai/ai.router.ts` and the
+  `/assessment/sessions/:id/feedback/ai` endpoint both 403 with
+  `code: 'feature_disabled'` for non-PLATFORM_ADMIN callers when the school
+  has not opted in. `PLATFORM_ADMIN` bypasses for support; their actions
+  remain auditable via the existing audit log.
+- ✓ Admin endpoints: `GET /api/v1/admin/features` (catalogue + per-school
+  state) and `PUT /api/v1/admin/features/:key` (toggle, audit-logged).
+  Tenant-scoped via `req.user.schoolId`.
+- ✓ Three flags seeded: `ai-authoring` (active, gates AI routes today),
+  `live-proctoring` (placeholder for a future cycle), `seb-tier-3`
+  (placeholder for Stage 5).
+- 〇 Console UI for the SCHOOL_ADMIN to toggle flags is deferred to cycle
+  2.4 (school-admin surface polish) — the API is ready, the UI is the
+  remaining piece.
 
 ---
 
@@ -229,11 +246,14 @@ and we don't certify against any specific LMS.
 
 ## D6 — Portal consolidation: collapse teacher + admin into `/console`?
 
-- **Status:** Open (recommendation: collapse, gated on D1)
+- **Status:** Decided — Option 1 (collapse). Implemented in cycle 2.0b.
 - **Raised:** `docs/00-audit.md` §12 Q4
-- **Owner:** unassigned
+- **Implemented:** Cycle 2.0b (branch `claude/stage-2-cycle-2-0b-console-merge`)
 
 ### Context
+
+*Pre-decision state, preserved for the record. The repo state below is
+what existed before cycle 2.0b; see Consequences for what's true now.*
 
 Today the repo has **five frontend portals**: `student`, `teacher`, `admin`,
 `superadmin`, plus the `api`. The teacher and admin portals share most of
@@ -266,11 +286,11 @@ exam-taking.
 
 ### Consequences
 
-- Stage 2 work: merge `apps/teacher` and `apps/admin` into `apps/console`
-- URL structure: `/console/teacher/...` and `/console/admin/...` or
-  role-rooted: `/c/exams`, `/c/admin/users` with auto role-detection
-- Single deploy target, single nginx vhost, single Dockerfile
-- One fewer place to forget to apply security fixes
+- ✓ `apps/teacher` renamed to `apps/console` via `git mv` (history preserved); `apps/admin` deleted; admin pages moved to `apps/console/src/pages/admin/*`.
+- ✓ Role-aware routing: TEACHER + SCHOOL_ADMIN + PLATFORM_ADMIN all land at `/`. The new `AdminRoute` wrapper guards `/admin/*` for SCHOOL_ADMIN / PLATFORM_ADMIN only. `Layout` shows the Admin nav section conditionally on role.
+- ✓ Single deploy target: `docker/Dockerfile.console` (replaces `Dockerfile.teacher` + `Dockerfile.admin`); single nginx vhost (`console.yourschool.edu` replaces `teacher.*` + `admin.*`); single CI build step.
+- ✓ Root `package.json` `dev` and `build` scripts updated; staging + prod compose volumes consolidated.
+- 〇 The merged `Layout` keeps the existing teacher visual treatment for now. Stage 4 (design system) will give teachers and admins a more obviously-segmented chrome if needed; for now the role badge in the sidebar footer is the only visual difference.
 
 ---
 

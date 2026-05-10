@@ -60,7 +60,7 @@ describe('cross-tenant isolation', () => {
         email: 'admin.a@a.test.edu',
         passwordHash,
         name: 'Admin A',
-        role: 'ADMIN',
+        role: 'SCHOOL_ADMIN',
         schoolId: schoolA.id,
       },
     });

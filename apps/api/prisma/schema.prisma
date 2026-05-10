@@ -12,8 +12,17 @@ datasource db {
 enum Role {
   STUDENT
   TEACHER
-  ADMIN
-  SUPER_ADMIN
+  // Cycle 2.0a / D1: ADMIN renamed to SCHOOL_ADMIN, PLATFORM_ADMIN renamed to
+  // PLATFORM_ADMIN, so role names match the audience they actually serve:
+  //   - SCHOOL_ADMIN   is scoped to a single schoolId (the IT lead, daily
+  //                    user of the customer-side admin portal)
+  //   - PLATFORM_ADMIN is cross-tenant by design (vendor SecureExam staff,
+  //                    hosted on platform.secureexam.app per cycle 1.1b)
+  // The runtime constraint that PLATFORM_ADMIN may have null schoolId and
+  // every other role must not is enforced at the application layer
+  // (auth.service.ts) — adding a SQL CHECK constraint is a follow-up.
+  SCHOOL_ADMIN
+  PLATFORM_ADMIN
 }
 
 model User {
@@ -79,8 +88,49 @@ model School {
   users   User[]
   classes Class[]
   exams   Exam[]
+  // Per-school feature flags (cycle 2.0e / D4). Toggled by SCHOOL_ADMIN
+  // via the console; queried by the API on every gated request.
+  features SchoolFeature[]
 
   @@map("schools")
+}
+
+// Cycle 2.0e / D4: per-school feature flags. Two tables so each toggle is
+// auditable (who turned it on, when) and so we can store flag-level
+// metadata once (description, category, default) instead of per school.
+//
+// Default first flag: 'ai-authoring' — AI question generation + AI feedback.
+// Off by default per docs/01-product.md §7. Schools opt in; we never opt them
+// in retroactively.
+model Feature {
+  key            String   @id                          // 'ai-authoring', 'live-proctoring', 'seb-tier-3', …
+  name           String
+  description    String
+  category       String   @default("general")          // 'ai' | 'proctoring' | 'integrations' | 'general'
+  defaultEnabled Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  schoolFeatures SchoolFeature[]
+
+  @@map("features")
+}
+
+model SchoolFeature {
+  schoolId    String
+  featureKey  String
+  enabled     Boolean   @default(false)
+  enabledAt   DateTime?
+  enabledById String?   // userId of whoever toggled it on (audit trail)
+  disabledAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureKey], references: [key], onDelete: Cascade)
+
+  @@id([schoolId, featureKey])
+  @@index([schoolId])
+  @@map("school_features")
 }
 
 model Class {
@@ -371,6 +421,12 @@ enum AuditAction {
   PROCTOR_REMOVED
   PIN_GENERATED
   BULK_IMPORT
+  // Cycle 2.0e / D4: feature-flag toggles
+  FEATURE_ENABLED
+  FEATURE_DISABLED
+  // Cycle 2.0f: PLATFORM_ADMIN actions on tenants. Always impersonation.
+  SCHOOL_PROVISIONED
+  SCHOOL_DELETED
 }
 
 model AuditLog {
@@ -383,9 +439,22 @@ model AuditLog {
   meta       Json?       // extra context (old values, new values, etc.)
   createdAt  DateTime    @default(now())
 
+  // Cycle 2.0f: SOC 2 / GDPR / FERPA evidence trail for cross-tenant
+  // actions. Denormalised from User and the target row so compliance
+  // queries don't need a join, and so anonymisation of an actor user
+  // (cycle's GDPR erasure path) doesn't lose the audit context.
+  actorRole       String?  // 'PLATFORM_ADMIN' | 'SCHOOL_ADMIN' | 'TEACHER' | 'STUDENT'
+  actorSchoolId   String?  // schoolId at the time of the action; null for PLATFORM_ADMIN
+  targetSchoolId  String?  // schoolId of the row being acted on, where known
+  impersonation   Boolean  @default(false)
+                           // true when the actor reached across tenants — i.e.
+                           // PLATFORM_ADMIN acting on any school, or any caller
+                           // with a different schoolId than the target.
+
   @@index([actorId])
   @@index([targetId])
   @@index([createdAt])
+  @@index([actorRole, impersonation])  // compliance: "show me all PLATFORM_ADMIN impersonations"
   @@map("audit_logs")
 }
 

@@ -11,7 +11,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(1),
-  role: z.enum(['STUDENT', 'TEACHER', 'ADMIN']),
+  role: z.enum(['STUDENT', 'TEACHER', 'SCHOOL_ADMIN']),
   schoolId: z.string().uuid(),
 });
 
@@ -33,7 +33,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.json({ data: user });
     return;
   }
-  if (!['ADMIN', 'SUPER_ADMIN'].includes(req.user.role)) {
+  if (!['SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(req.user.role)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -53,7 +53,7 @@ router.post('/', isAdmin, async (req: Request, res: Response) => {
     return;
   }
   // Admins can only create users in their own school
-  if (req.user.role !== 'SUPER_ADMIN' && parsed.data.schoolId !== req.user.schoolId) {
+  if (req.user.role !== 'PLATFORM_ADMIN' && parsed.data.schoolId !== req.user.schoolId) {
     res.status(403).json({ error: 'Cannot create users in another school' });
     return;
   }
@@ -71,7 +71,7 @@ router.post('/', isAdmin, async (req: Request, res: Response) => {
 
 // PUT /api/v1/users/:id
 router.put('/:id', async (req: Request, res: Response) => {
-  if (req.params.id !== req.user.sub && !['ADMIN', 'SUPER_ADMIN'].includes(req.user.role)) {
+  if (req.params.id !== req.user.sub && !['SCHOOL_ADMIN', 'PLATFORM_ADMIN'].includes(req.user.role)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

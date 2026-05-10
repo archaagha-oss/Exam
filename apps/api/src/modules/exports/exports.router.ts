@@ -92,8 +92,8 @@ router.get('/exams/:id/results.csv', isTeacher, async (req: Request, res: Respon
 
 // GET /api/v1/exports/schools/:schoolId/users.csv  — bulk user export
 router.get('/schools/:schoolId/users.csv', isAdmin, async (req: Request, res: Response) => {
-  // Admin can only export their own school. SUPER_ADMIN can export any.
-  if (req.user.role !== 'SUPER_ADMIN' && req.params.schoolId !== req.user.schoolId) {
+  // Admin can only export their own school. PLATFORM_ADMIN can export any.
+  if (req.user.role !== 'PLATFORM_ADMIN' && req.params.schoolId !== req.user.schoolId) {
     res.status(403).json({ error: 'Cannot export users from another school' });
     return;
   }

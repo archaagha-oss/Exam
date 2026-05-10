@@ -27,11 +27,12 @@ const MODULES_ROOT = join(__dirname, '..', 'src', 'modules');
 // Files exempt from the findUnique-by-URL-id ban. Every entry needs a written
 // reason. Adding to this list should be a reviewable change, not a reflex.
 const ALLOWLIST: string[] = [
-  // SUPER_ADMIN portal is cross-tenant by design — it manages every school
-  // on the platform. This is the role D1 will split into a vendor-only
-  // PLATFORM_ADMIN and customer-side SCHOOL_ADMIN; until then, the cross-
-  // tenant pattern in this single file is the intended behaviour.
-  join(MODULES_ROOT, 'superadmin', 'superadmin.router.ts'),
+  // PLATFORM_ADMIN portal is cross-tenant by design — it manages every school
+  // on the platform. After cycle 2.0a / D1, this is the vendor-side
+  // PLATFORM_ADMIN role; cycle 2.0c renamed the module from superadmin/
+  // to platform/. The cross-tenant findUnique pattern in this single file
+  // is the intended behaviour.
+  join(MODULES_ROOT, 'platform', 'platform.router.ts'),
 ];
 
 function walkRouters(dir: string): string[] {

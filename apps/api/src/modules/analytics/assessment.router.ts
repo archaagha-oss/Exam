@@ -313,6 +313,21 @@ router.post('/sessions/:id/feedback', authenticate, isTeacher, async (req: Reque
 
 // POST /api/v1/assessment/sessions/:id/feedback/ai  — generate AI remediation
 router.post('/sessions/:id/feedback/ai', authenticate, isTeacher, async (req: Request, res: Response) => {
+  // Cycle 2.0e / D4: same per-school 'ai-authoring' gate as the routes on
+  // /ai/*. PLATFORM_ADMIN bypasses for support; everyone else needs opt-in.
+  if (req.user.role !== 'PLATFORM_ADMIN') {
+    const { schoolFeatureEnabled } = await import('../../lib/featureFlags');
+    const aiOn = await schoolFeatureEnabled(req.user.schoolId, 'ai-authoring');
+    if (!aiOn) {
+      res.status(403).json({
+        error: 'AI authoring is not enabled for your school. Ask your school admin to opt in.',
+        code: 'feature_disabled',
+        feature: 'ai-authoring',
+      });
+      return;
+    }
+  }
+
   const session = await prisma.examSession.findUnique({
     where: { id: req.params.id },
     include: {
