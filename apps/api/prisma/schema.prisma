@@ -88,8 +88,49 @@ model School {
   users   User[]
   classes Class[]
   exams   Exam[]
+  // Per-school feature flags (cycle 2.0e / D4). Toggled by SCHOOL_ADMIN
+  // via the console; queried by the API on every gated request.
+  features SchoolFeature[]
 
   @@map("schools")
+}
+
+// Cycle 2.0e / D4: per-school feature flags. Two tables so each toggle is
+// auditable (who turned it on, when) and so we can store flag-level
+// metadata once (description, category, default) instead of per school.
+//
+// Default first flag: 'ai-authoring' — AI question generation + AI feedback.
+// Off by default per docs/01-product.md §7. Schools opt in; we never opt them
+// in retroactively.
+model Feature {
+  key            String   @id                          // 'ai-authoring', 'live-proctoring', 'seb-tier-3', …
+  name           String
+  description    String
+  category       String   @default("general")          // 'ai' | 'proctoring' | 'integrations' | 'general'
+  defaultEnabled Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  schoolFeatures SchoolFeature[]
+
+  @@map("features")
+}
+
+model SchoolFeature {
+  schoolId    String
+  featureKey  String
+  enabled     Boolean   @default(false)
+  enabledAt   DateTime?
+  enabledById String?   // userId of whoever toggled it on (audit trail)
+  disabledAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureKey], references: [key], onDelete: Cascade)
+
+  @@id([schoolId, featureKey])
+  @@index([schoolId])
+  @@map("school_features")
 }
 
 model Class {
@@ -380,6 +421,9 @@ enum AuditAction {
   PROCTOR_REMOVED
   PIN_GENERATED
   BULK_IMPORT
+  // Cycle 2.0e / D4: feature-flag toggles
+  FEATURE_ENABLED
+  FEATURE_DISABLED
 }
 
 model AuditLog {

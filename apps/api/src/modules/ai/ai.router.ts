@@ -1,12 +1,35 @@
 // apps/api/src/modules/ai/ai.router.ts
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { authenticate, isTeacher } from '../../middleware/auth';
 import { buildQuestionGenPrompt, PromptInjectionError } from '../../lib/aiPrompt';
+import { schoolFeatureEnabled } from '../../lib/featureFlags';
 
 const router = Router();
 router.use(authenticate, isTeacher);
+
+// Cycle 2.0e / D4: every AI route on this router is gated behind the
+// 'ai-authoring' per-school feature flag. PLATFORM_ADMIN bypasses the flag
+// since they're vendor support and may need to debug a school that has it
+// off; their actions are auditable separately.
+async function requireAiAuthoring(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (req.user.role === 'PLATFORM_ADMIN') {
+    next();
+    return;
+  }
+  const enabled = await schoolFeatureEnabled(req.user.schoolId, 'ai-authoring');
+  if (!enabled) {
+    res.status(403).json({
+      error: 'AI authoring is not enabled for your school. Ask your school admin to opt in.',
+      code: 'feature_disabled',
+      feature: 'ai-authoring',
+    });
+    return;
+  }
+  next();
+}
+router.use(requireAiAuthoring);
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,

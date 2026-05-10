@@ -148,9 +148,9 @@ prop or theme switch at the app-shell level is a small change.
 
 ## D4 — AI feature flag: where does it live?
 
-- **Status:** Open (recommendation: dedicated `Feature` table)
+- **Status:** Decided — Option 2 (dedicated `Feature` + `SchoolFeature` tables). Implemented in cycle 2.0e.
 - **Raised:** Cycle 0.2, batch 3 (AI authoring stance)
-- **Owner:** unassigned
+- **Implemented:** Cycle 2.0e (branch `claude/stage-2-cycle-2-0e-d4-feature-flags`)
 
 ### Context
 
@@ -178,12 +178,27 @@ naturally into our `AuditLog` discipline.
 
 ### Consequences
 
-- New tables in Stage 1 schema migration
-- A small admin UI for the IT lead to toggle features (Stage 2)
-- Server-side helper: `await schoolFeatureEnabled(schoolId, 'ai-authoring')`
-  with Redis-cached results
-- First flag: `ai-authoring`. Second-likely: `live-proctoring`. Third:
-  `seb-tier-3`.
+- ✓ New tables shipped: `prisma/migrations/20260510130000_3_d4_feature_flags/`
+  — `features` (catalogue, vendor-managed) + `school_features` (per-tenant
+  toggle, with `enabledById` / `enabledAt` / `disabledAt` for the audit trail).
+- ✓ Server-side helper: `apps/api/src/lib/featureFlags.ts` — fail-closed,
+  Redis-cached at 60s TTL, `setSchoolFeature()` flips the toggle and the
+  caller audit-logs via the existing `AuditLog` table (new `FEATURE_ENABLED`
+  / `FEATURE_DISABLED` `AuditAction` values).
+- ✓ AI gate wired: `apps/api/src/modules/ai/ai.router.ts` and the
+  `/assessment/sessions/:id/feedback/ai` endpoint both 403 with
+  `code: 'feature_disabled'` for non-PLATFORM_ADMIN callers when the school
+  has not opted in. `PLATFORM_ADMIN` bypasses for support; their actions
+  remain auditable via the existing audit log.
+- ✓ Admin endpoints: `GET /api/v1/admin/features` (catalogue + per-school
+  state) and `PUT /api/v1/admin/features/:key` (toggle, audit-logged).
+  Tenant-scoped via `req.user.schoolId`.
+- ✓ Three flags seeded: `ai-authoring` (active, gates AI routes today),
+  `live-proctoring` (placeholder for a future cycle), `seb-tier-3`
+  (placeholder for Stage 5).
+- 〇 Console UI for the SCHOOL_ADMIN to toggle flags is deferred to cycle
+  2.4 (school-admin surface polish) — the API is ready, the UI is the
+  remaining piece.
 
 ---
 
