@@ -18,9 +18,11 @@ enum Role {
   //                    user of the customer-side admin portal)
   //   - PLATFORM_ADMIN is cross-tenant by design (vendor SecureExam staff,
   //                    hosted on platform.secureexam.app per cycle 1.1b)
-  // The runtime constraint that PLATFORM_ADMIN may have null schoolId and
-  // every other role must not is enforced at the application layer
-  // (auth.service.ts) — adding a SQL CHECK constraint is a follow-up.
+  // The constraint that PLATFORM_ADMIN may have null schoolId and every
+  // other role must not is enforced both at the application layer
+  // (auth.service.ts) AND at the database level since cycle 4.0
+  // (migration 20260510150000_5_role_schoolid_check_constraint added the
+  // SQL CHECK named "users_role_schoolId_pair").
   SCHOOL_ADMIN
   PLATFORM_ADMIN
 }
