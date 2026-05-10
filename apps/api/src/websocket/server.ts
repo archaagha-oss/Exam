@@ -46,8 +46,9 @@ export function setupWebSocket(server: http.Server) {
     // Token auth: ONLY via Sec-WebSocket-Protocol "bearer.<jwt>" subprotocol.
     // The ?token= query fallback was removed in cycle 1.1b (P1-2) — query
     // params travel through every proxy access log on the path; subprotocol
-    // headers do not. Both clients (apps/student/ExamSessionPage,
-    // apps/teacher/useProctor) were migrated in the same cycle.
+    // headers do not. Both clients (apps/student/ExamSessionPage and
+    // apps/console/hooks/useProctor — was apps/teacher/useProctor pre-D6)
+    // were migrated in the same cycle.
     const subprotoHeader = (req.headers['sec-websocket-protocol'] as string | undefined) ?? '';
     const protoTokens = subprotoHeader
       .split(',')

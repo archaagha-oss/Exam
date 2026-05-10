@@ -17,8 +17,7 @@ set -euo pipefail
 
 DOMAINS=(
   exam.yourschool.edu
-  teacher.yourschool.edu
-  admin.yourschool.edu
+  console.yourschool.edu
   api.yourschool.edu
   platform.secureexam.app
 )

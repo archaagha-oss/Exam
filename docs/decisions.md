@@ -227,9 +227,9 @@ and we don't certify against any specific LMS.
 
 ## D6 — Portal consolidation: collapse teacher + admin into `/console`?
 
-- **Status:** Open (recommendation: collapse, gated on D1)
+- **Status:** Decided — Option 1 (collapse). Implemented in cycle 2.0b.
 - **Raised:** `docs/00-audit.md` §12 Q4
-- **Owner:** unassigned
+- **Implemented:** Cycle 2.0b (branch `claude/stage-2-cycle-2-0b-console-merge`)
 
 ### Context
 
@@ -264,11 +264,11 @@ exam-taking.
 
 ### Consequences
 
-- Stage 2 work: merge `apps/teacher` and `apps/admin` into `apps/console`
-- URL structure: `/console/teacher/...` and `/console/admin/...` or
-  role-rooted: `/c/exams`, `/c/admin/users` with auto role-detection
-- Single deploy target, single nginx vhost, single Dockerfile
-- One fewer place to forget to apply security fixes
+- ✓ `apps/teacher` renamed to `apps/console` via `git mv` (history preserved); `apps/admin` deleted; admin pages moved to `apps/console/src/pages/admin/*`.
+- ✓ Role-aware routing: TEACHER + SCHOOL_ADMIN + PLATFORM_ADMIN all land at `/`. The new `AdminRoute` wrapper guards `/admin/*` for SCHOOL_ADMIN / PLATFORM_ADMIN only. `Layout` shows the Admin nav section conditionally on role.
+- ✓ Single deploy target: `docker/Dockerfile.console` (replaces `Dockerfile.teacher` + `Dockerfile.admin`); single nginx vhost (`console.yourschool.edu` replaces `teacher.*` + `admin.*`); single CI build step.
+- ✓ Root `package.json` `dev` and `build` scripts updated; staging + prod compose volumes consolidated.
+- 〇 The merged `Layout` keeps the existing teacher visual treatment for now. Stage 4 (design system) will give teachers and admins a more obviously-segmented chrome if needed; for now the role badge in the sidebar footer is the only visual difference.
 
 ---
 
