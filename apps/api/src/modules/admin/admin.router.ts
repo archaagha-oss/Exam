@@ -3,7 +3,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { authenticate, isAdmin } from '../../middleware/auth';
-import { audit, tenantScope } from '../../lib/examAccess';
+import { audit, auditFromReq, tenantScope } from '../../lib/examAccess';
 import prisma from '../../lib/prisma';
 
 const router = Router();
@@ -320,7 +320,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 router.post('/exams/:id/close', async (req: Request, res: Response) => {
   const exam = await prisma.exam.findFirst({
     where: { id: req.params.id, ...tenantScope(req.user.role, req.user.schoolId) },
-    select: { id: true, title: true },
+    select: { id: true, title: true, schoolId: true },
   });
   if (!exam) { res.status(404).json({ error: 'Exam not found' }); return; }
 
@@ -329,7 +329,12 @@ router.post('/exams/:id/close', async (req: Request, res: Response) => {
     data: { status: 'CLOSED' },
     select: { id: true, title: true, status: true },
   });
-  await audit(req.user.sub, 'EXAM_CLOSED', 'Exam', updated.id, { title: updated.title });
+  // Cycle 2.0f: auditFromReq tags impersonation=true automatically when a
+  // PLATFORM_ADMIN closes an exam in a school they don't own.
+  await auditFromReq(req, 'EXAM_CLOSED', 'Exam', updated.id, {
+    targetSchoolId: exam.schoolId,
+    meta: { title: updated.title },
+  });
   res.json({ data: updated });
 });
 
@@ -337,16 +342,16 @@ router.post('/exams/:id/close', async (req: Request, res: Response) => {
 router.delete('/proctors/:examId/:teacherId', async (req: Request, res: Response) => {
   const exam = await prisma.exam.findFirst({
     where: { id: req.params.examId, ...tenantScope(req.user.role, req.user.schoolId) },
-    select: { id: true },
+    select: { id: true, schoolId: true },
   });
   if (!exam) { res.status(404).json({ error: 'Exam not found' }); return; }
 
   await prisma.examProctor.deleteMany({
     where: { examId: req.params.examId, teacherId: req.params.teacherId },
   });
-  await audit(req.user.sub, 'PROCTOR_REMOVED', 'Exam', req.params.examId, {
-    removedBy: 'admin',
-    teacherId: req.params.teacherId,
+  await auditFromReq(req, 'PROCTOR_REMOVED', 'Exam', req.params.examId, {
+    targetSchoolId: exam.schoolId,
+    meta: { removedBy: 'admin', teacherId: req.params.teacherId },
   });
   res.json({ data: { removed: true } });
 });
@@ -369,7 +374,10 @@ router.post('/users/:id/reset-password', async (req: Request, res: Response) => 
 
   const hash = await bcrypt.hash(parsed.data.newPassword, 12);
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hash } });
-  await audit(req.user.sub, 'USER_UPDATED', 'User', user.id, { action: 'password_reset' });
+  await auditFromReq(req, 'USER_UPDATED', 'User', user.id, {
+    targetSchoolId: user.schoolId,
+    meta: { action: 'password_reset' },
+  });
 
   res.json({ data: { message: 'Password reset successfully' } });
 });
@@ -680,12 +688,18 @@ router.put('/features/:key', async (req: Request, res: Response) => {
     res.status(status).json({ error: message });
     return;
   }
-  await audit(
-    req.user.sub,
+  // Cycle 2.0f: feature toggles are PLATFORM_ADMIN-reachable, so the
+  // impersonation flag matters here. auditFromReq sets it when the actor's
+  // schoolId differs from targetSchoolId (or the actor is PLATFORM_ADMIN).
+  await auditFromReq(
+    req,
     parsed.data.enabled ? 'FEATURE_ENABLED' : 'FEATURE_DISABLED',
     'SchoolFeature',
     `${schoolId}:${req.params.key}`,
-    { schoolId, featureKey: req.params.key, enabled: parsed.data.enabled }
+    {
+      targetSchoolId: schoolId,
+      meta: { schoolId, featureKey: req.params.key, enabled: parsed.data.enabled },
+    }
   );
 
   res.json({ data: { key: req.params.key, enabled: parsed.data.enabled } });

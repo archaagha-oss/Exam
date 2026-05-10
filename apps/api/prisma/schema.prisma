@@ -424,6 +424,9 @@ enum AuditAction {
   // Cycle 2.0e / D4: feature-flag toggles
   FEATURE_ENABLED
   FEATURE_DISABLED
+  // Cycle 2.0f: PLATFORM_ADMIN actions on tenants. Always impersonation.
+  SCHOOL_PROVISIONED
+  SCHOOL_DELETED
 }
 
 model AuditLog {
@@ -436,9 +439,22 @@ model AuditLog {
   meta       Json?       // extra context (old values, new values, etc.)
   createdAt  DateTime    @default(now())
 
+  // Cycle 2.0f: SOC 2 / GDPR / FERPA evidence trail for cross-tenant
+  // actions. Denormalised from User and the target row so compliance
+  // queries don't need a join, and so anonymisation of an actor user
+  // (cycle's GDPR erasure path) doesn't lose the audit context.
+  actorRole       String?  // 'PLATFORM_ADMIN' | 'SCHOOL_ADMIN' | 'TEACHER' | 'STUDENT'
+  actorSchoolId   String?  // schoolId at the time of the action; null for PLATFORM_ADMIN
+  targetSchoolId  String?  // schoolId of the row being acted on, where known
+  impersonation   Boolean  @default(false)
+                           // true when the actor reached across tenants — i.e.
+                           // PLATFORM_ADMIN acting on any school, or any caller
+                           // with a different schoolId than the target.
+
   @@index([actorId])
   @@index([targetId])
   @@index([createdAt])
+  @@index([actorRole, impersonation])  // compliance: "show me all PLATFORM_ADMIN impersonations"
   @@map("audit_logs")
 }
 
