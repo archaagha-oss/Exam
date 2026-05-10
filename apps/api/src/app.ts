@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { requestId } from './middleware/requestId';
 import { logger } from './lib/logger';
 import { registry, httpRequestDuration } from './lib/metrics';
+import { captureError } from './lib/sentry';
 import prisma from './lib/prisma';
 
 import authRouter from './modules/auth/auth.router';
@@ -176,6 +177,14 @@ app.use(
         { err: err.stack || err.message, requestId: (_req as express.Request).id },
         'unhandled error'
       );
+      // Cycle 1.4 / P1-10: forward 5xxs to Sentry. 4xxs are client problems
+      // by definition and would only add noise. Sentry is optional — the
+      // shim no-ops without SENTRY_DSN.
+      captureError(err, {
+        requestId: (_req as express.Request).id,
+        path: (_req as express.Request).path,
+        method: (_req as express.Request).method,
+      });
     }
     const safeMessage =
       status < 500
