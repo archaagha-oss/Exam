@@ -623,3 +623,70 @@ router.delete('/gdpr/erase/:userId', async (req: Request, res: Response) => {
 
   res.json({ data: { erased: true, anonymisedId: anonymised.id } });
 });
+
+// ── FEATURE FLAGS (cycle 2.0e / D4) ────────────────────────
+//
+// Per-school feature toggles. Read endpoint shows the catalogue with the
+// caller's school's current state; write endpoint flips one flag and
+// audit-logs the actor + timestamp. SCHOOL_ADMIN gates by tenant scope;
+// PLATFORM_ADMIN can use the same endpoints for support — schoolId still
+// comes from req.user, so they implicitly act on whichever school they
+// last impersonated.
+
+// GET /api/v1/admin/features
+router.get('/features', async (req: Request, res: Response) => {
+  const schoolId = req.user.schoolId;
+  if (!schoolId) { res.status(400).json({ error: 'No school on this account' }); return; }
+
+  const [catalogue, schoolRows] = await Promise.all([
+    prisma.feature.findMany({ orderBy: { key: 'asc' } }),
+    prisma.schoolFeature.findMany({ where: { schoolId } }),
+  ]);
+  const schoolByKey = new Map(schoolRows.map((r) => [r.featureKey, r]));
+
+  res.json({
+    data: catalogue.map((f) => {
+      const sf = schoolByKey.get(f.key);
+      return {
+        key: f.key,
+        name: f.name,
+        description: f.description,
+        category: f.category,
+        defaultEnabled: f.defaultEnabled,
+        enabled: sf?.enabled ?? f.defaultEnabled,
+        enabledAt: sf?.enabledAt ?? null,
+        enabledById: sf?.enabledById ?? null,
+        disabledAt: sf?.disabledAt ?? null,
+      };
+    }),
+  });
+});
+
+// PUT /api/v1/admin/features/:key  body: { enabled: boolean }
+router.put('/features/:key', async (req: Request, res: Response) => {
+  const schoolId = req.user.schoolId;
+  if (!schoolId) { res.status(400).json({ error: 'No school on this account' }); return; }
+
+  const schema = z.object({ enabled: z.boolean() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Body must be { enabled: boolean }' }); return; }
+
+  const { setSchoolFeature } = await import('../../lib/featureFlags');
+  try {
+    await setSchoolFeature(schoolId, req.params.key, parsed.data.enabled, req.user.sub);
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 500;
+    const message = (err as Error)?.message ?? 'Failed to update feature';
+    res.status(status).json({ error: message });
+    return;
+  }
+  await audit(
+    req.user.sub,
+    parsed.data.enabled ? 'FEATURE_ENABLED' : 'FEATURE_DISABLED',
+    'SchoolFeature',
+    `${schoolId}:${req.params.key}`,
+    { schoolId, featureKey: req.params.key, enabled: parsed.data.enabled }
+  );
+
+  res.json({ data: { key: req.params.key, enabled: parsed.data.enabled } });
+});
