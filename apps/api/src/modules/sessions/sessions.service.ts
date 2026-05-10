@@ -1,6 +1,47 @@
 // apps/api/src/modules/sessions/sessions.service.ts
 import prisma from '../../lib/prisma';
 
+/**
+ * Authoritative time-remaining for an in-progress session, accounting for
+ * SEN extra-time and time spent in rest breaks. Returns 0 if the session has
+ * already exceeded its window. Returns null only when the session has not
+ * started yet (no startedAt). Used by both the REST GET /sessions/:id load
+ * path and the WebSocket heartbeat (cycle 1.2 / P1-3) so the client never has
+ * to be the source of truth on time.
+ */
+export async function computeSecondsRemaining(sessionId: string): Promise<number | null> {
+  const session = await prisma.examSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      startedAt: true,
+      studentId: true,
+      exam: { select: { durationMinutes: true } },
+    },
+  });
+  if (!session || !session.startedAt) return null;
+
+  const senProfile = await prisma.studentAccessArrangement
+    .findUnique({ where: { studentId: session.studentId } })
+    .catch(() => null);
+
+  const extraTimePct = senProfile?.extraTimePercent ?? 0;
+  const adjustedDurationMs = Math.round(
+    session.exam.durationMinutes * 60_000 * (1 + extraTimePct / 100)
+  );
+
+  const breaks = await prisma.restBreakLog
+    .findMany({
+      where: { sessionId },
+      select: { durationSeconds: true },
+    })
+    .catch(() => []);
+  const breakMs = breaks.reduce((s, b) => s + (b.durationSeconds ?? 0) * 1000, 0);
+
+  const elapsed = Date.now() - new Date(session.startedAt).getTime();
+  const netElapsed = Math.max(0, elapsed - breakMs);
+  return Math.max(0, Math.round((adjustedDurationMs - netElapsed) / 1000));
+}
+
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {

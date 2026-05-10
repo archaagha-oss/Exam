@@ -2,6 +2,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '../lib/api';
+import {
+  enqueue as enqueueAnswer,
+  remove as removeQueued,
+  listAll as listQueued,
+  drain as drainQueue,
+  type QueuedWrite,
+} from '../lib/answerQueue';
 import { useAuthStore } from '../store/authStore';
 import type { QuestionForStudent, SessionState } from '@secureexam/shared-types';
 import LockScreen from '../components/LockScreen';
@@ -44,7 +51,10 @@ export default function ExamSessionPage() {
   const [examStarted, setExamStarted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'reconnecting'>('online');
-  const [pendingAnswers, setPendingAnswers] = useState<any[]>([]);
+  // Queued count is sourced from the IndexedDB answer queue (P1-4). The
+  // queue persists across tab close, so a student who hits a network blip
+  // 5 minutes into an exam doesn't lose any answers when they recover.
+  const [queuedCount, setQueuedCount] = useState(0);
 
   // SEN accommodations (applied from session state)
   const [showCalculator, setShowCalculator] = useState(false);
@@ -69,6 +79,23 @@ export default function ExamSessionPage() {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusLossTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxViolations = state?.exam.maxViolations ?? 3;
+
+  // ── Drain any queued answers from a previous tab/session (P1-4) ──
+  // Runs once on mount so a refresh during a network blip doesn't leave
+  // unsent answers stranded.
+  useEffect(() => {
+    if (!sessionId) return;
+    drainQueue(async (write) => {
+      await api.post(write.url, write.body, {
+        headers: { 'Idempotency-Key': write.id },
+      });
+    })
+      .catch(() => {})
+      .finally(() => {
+        refreshQueueCount();
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   // ── Load session ─────────────────────────────────────────
   useEffect(() => {
@@ -129,6 +156,24 @@ export default function ExamSessionPage() {
       if (msg.type === 'session:force_submit') {
         handleForceSubmit(msg.payload.reason);
       }
+      // Server-authoritative timer (P1-3). Each heartbeat reply carries the
+      // canonical secondsRemaining computed against startedAt + duration on
+      // the server; we use it as ground truth and let the local 1s timer
+      // interpolate between heartbeats for smooth UI.
+      if (msg.type === 'pong' && typeof msg.payload?.secondsRemaining === 'number') {
+        const serverSecs = msg.payload.secondsRemaining;
+        setSecondsLeft((local) => {
+          // Trust the server. If it says 0 we trigger auto-submit.
+          if (serverSecs <= 0) {
+            handleAutoSubmit('Time expired');
+            return 0;
+          }
+          // If the local clock has drifted away from the server by more than
+          // ~3 seconds, snap. Otherwise let the local 1s tick keep counting
+          // so the UI stays smooth.
+          return Math.abs(local - serverSecs) > 3 ? serverSecs : local;
+        });
+      }
     };
 
     heartbeatRef.current = setInterval(() => {
@@ -175,16 +220,66 @@ export default function ExamSessionPage() {
     };
   }, [examStarted, networkStatus]);
 
-  async function flushPendingAnswers() {
-    const queue = [...pendingAnswers];
-    if (queue.length === 0) { setNetworkStatus('online'); return; }
-    for (const item of queue) {
-      try {
-        await api.post(`/sessions/${sessionId}/answer`, item);
-      } catch { /* still offline */ }
+  async function refreshQueueCount() {
+    try {
+      const items = await listQueued();
+      setQueuedCount(items.length);
+    } catch {
+      // IndexedDB unavailable (private browsing, locked storage). Surface as
+      // zero so the banner doesn't lie about queued state we can't read.
+      setQueuedCount(0);
     }
-    setPendingAnswers([]);
-    setNetworkStatus('online');
+  }
+
+  // Persistent answer save (P1-4). Always enqueue first so the write
+  // survives tab close, then attempt POST immediately. Failures stay in the
+  // queue until flushPendingAnswers / drain runs.
+  async function saveAnswer(payload: { questionId: string; selectedIds?: string[]; textAnswer?: string }) {
+    const write: QueuedWrite = {
+      id:
+        typeof crypto?.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${payload.questionId}-${Date.now()}-${Math.random()}`,
+      dedupeKey: `answer:${payload.questionId}`,
+      url: `/sessions/${sessionId}/answer`,
+      body: payload,
+      createdAt: Date.now(),
+    };
+    try {
+      await enqueueAnswer(write);
+    } catch {
+      // If we can't even enqueue, fall through to the direct POST attempt;
+      // there's nothing else we can durably do from a locked-down browser.
+    }
+    refreshQueueCount();
+
+    try {
+      await api.post(write.url, write.body, {
+        headers: { 'Idempotency-Key': write.id },
+      });
+      await removeQueued(write.id).catch(() => {});
+      refreshQueueCount();
+      // Optimistic WS broadcast for the proctor view; best-effort, not auth.
+      wsRef.current?.send(
+        JSON.stringify({
+          type: 'session:answer',
+          payload: { sessionId, ...payload },
+          timestamp: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // Stay in queue; flushPendingAnswers / drainQueue retries on reconnect.
+    }
+  }
+
+  async function flushPendingAnswers() {
+    const result = await drainQueue(async (write) => {
+      await api.post(write.url, write.body, {
+        headers: { 'Idempotency-Key': write.id },
+      });
+    });
+    refreshQueueCount();
+    if (result.failed === 0) setNetworkStatus('online');
   }
 
   // ── Timer ─────────────────────────────────────────────────
@@ -351,20 +446,11 @@ export default function ExamSessionPage() {
       const payload = { questionId, selectedIds: selected };
       if (saveTimeout.current) clearTimeout(saveTimeout.current);
       saveTimeout.current = setTimeout(() => {
-        if (networkStatus === 'offline') {
-          setPendingAnswers(q => [...q.filter(x => x.questionId !== questionId), payload]);
-        } else {
-          api.post(`/sessions/${sessionId}/answer`, payload);
-          wsRef.current?.send(JSON.stringify({
-            type: 'session:answer',
-            payload: { sessionId, ...payload },
-            timestamp: new Date().toISOString(),
-          }));
-        }
+        saveAnswer(payload);
       }, ANSWER_SAVE_DEBOUNCE);
       return { ...prev, [questionId]: selected };
     });
-  }, [sessionId, networkStatus]);
+  }, [sessionId]);
 
   // ── Submit ────────────────────────────────────────────────
   const doSubmit = async (reason: string) => {
@@ -704,8 +790,8 @@ export default function ExamSessionPage() {
               ? '⚠ No internet connection — answers are being saved locally'
               : '↻ Reconnecting and syncing answers…'}
           </span>
-          {pendingAnswers.length > 0 && (
-            <span className="text-xs opacity-75">{pendingAnswers.length} answer{pendingAnswers.length !== 1 ? 's' : ''} queued</span>
+          {queuedCount > 0 && (
+            <span className="text-xs opacity-75">{queuedCount} answer{queuedCount !== 1 ? 's' : ''} queued</span>
           )}
         </div>
       )}
@@ -983,13 +1069,7 @@ export default function ExamSessionPage() {
                     setAnswers(prev => ({ ...prev, [q.id]: [text] as any }));
                     if (saveTimeout.current) clearTimeout(saveTimeout.current);
                     saveTimeout.current = setTimeout(() => {
-                      const payload = { questionId: q.id, textAnswer: text };
-                      if (networkStatus === 'offline') {
-                        setPendingAnswers(prev => [...prev.filter(x => x.questionId !== q.id), payload]);
-                      } else {
-                        api.post(`/sessions/${sessionId}/answer`, payload);
-                        wsRef.current?.send(JSON.stringify({ type: 'session:answer', payload: { sessionId, ...payload }, timestamp: new Date().toISOString() }));
-                      }
+                      saveAnswer({ questionId: q.id, textAnswer: text });
                     }, ANSWER_SAVE_DEBOUNCE);
                   }}
                 />

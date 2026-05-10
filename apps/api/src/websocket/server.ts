@@ -191,7 +191,27 @@ async function handleMessage(client: AuthenticatedClient, msg: any) {
     case 'session:heartbeat': {
       client.lastHeartbeat = Date.now();
       client.isStale = false;
-      client.ws.send(JSON.stringify({ type: 'pong', payload: {}, timestamp: ts }));
+
+      // Server-authoritative timer (cycle 1.2 / P1-3). Each heartbeat reply
+      // carries the canonical secondsRemaining. The client uses this as
+      // ground truth and only does local 1s decrement between heartbeats for
+      // smooth UI. Without this, a client that pauses the JS event loop
+      // (devtools, throttling, dragging the tab) drifts, and a client that
+      // tampers with setInterval can extend the exam.
+      let secondsRemaining: number | null = null;
+      if (client.sessionId) {
+        const { computeSecondsRemaining } = await import(
+          '../modules/sessions/sessions.service'
+        );
+        secondsRemaining = await computeSecondsRemaining(client.sessionId);
+      }
+      client.ws.send(
+        JSON.stringify({
+          type: 'pong',
+          payload: { secondsRemaining },
+          timestamp: ts,
+        })
+      );
 
       // Broadcast live progress snapshot to proctors
       if (client.sessionId && client.examId) {

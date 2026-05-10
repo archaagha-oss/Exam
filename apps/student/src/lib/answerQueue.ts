@@ -11,7 +11,15 @@ const DB_VERSION = 1;
 const STORE = 'answer_queue';
 
 export interface QueuedWrite {
-  id: string; // primary key (idempotency key)
+  id: string; // primary key — used as the Idempotency-Key on send
+  /**
+   * Optional logical key for client-side dedupe (e.g. `answer:<qid>`). If set,
+   * enqueue() removes any existing items with the same dedupeKey before
+   * inserting, so the queue keeps exactly one entry per logical write. The
+   * `id` (idempotency key) still rotates on each new enqueue so the server
+   * never confuses a fresh write with a replay.
+   */
+  dedupeKey?: string;
   url: string;
   body: unknown;
   createdAt: number;
@@ -45,6 +53,11 @@ async function tx<T>(
 }
 
 export async function enqueue(write: QueuedWrite): Promise<void> {
+  if (write.dedupeKey) {
+    const all = await listAll();
+    const existing = all.filter((w) => w.dedupeKey === write.dedupeKey);
+    for (const w of existing) await remove(w.id);
+  }
   await tx('readwrite', (s) => s.put(write));
 }
 
