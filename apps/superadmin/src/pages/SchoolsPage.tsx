@@ -1,7 +1,7 @@
 // apps/superadmin/src/pages/SchoolsPage.tsx
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiFetch } from '../App';
+import api from '../lib/api';
 
 const S = { padding: '32px' } as const;
 const card = { background: '#111827', border: '1px solid #1f2937', borderRadius: 12 } as const;
@@ -12,13 +12,13 @@ interface School {
   schemaName: string; createdAt: string; lastActivityAt: string | null;
 }
 
-export default function SchoolsPage({ token }: { token: string | null }) {
+export default function SchoolsPage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    apiFetch('/platform/schools', {}, token).then(r => setSchools(r.data));
-  }, [token]);
+    api.get('/platform/schools').then((r) => setSchools(r.data.data));
+  }, []);
 
   const filtered = schools.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||

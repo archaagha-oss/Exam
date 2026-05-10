@@ -104,8 +104,10 @@ export default function ExamSessionPage() {
   useEffect(() => {
     if (!examStarted || !sessionId || !token) return;
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws?token=${token}&sessionId=${sessionId}&examId=${state?.exam.id}`;
-    const ws = new WebSocket(wsUrl);
+    // Token is sent via Sec-WebSocket-Protocol "bearer.<jwt>" subprotocol so it
+    // never appears in URLs / proxy access logs (P1-2, audit §8).
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws?sessionId=${sessionId}&examId=${state?.exam.id}`;
+    const ws = new WebSocket(wsUrl, [`bearer.${token}`]);
     wsRef.current = ws;
 
     ws.onopen = () => setNetworkStatus('online');

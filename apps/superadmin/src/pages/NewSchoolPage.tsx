@@ -1,32 +1,36 @@
 // apps/superadmin/src/pages/NewSchoolPage.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../App';
+import api from '../lib/api';
 
 const S = { padding: '32px', maxWidth: 520 } as const;
 const inp = { width: '100%', background: '#1f2937', border: '1px solid #374151', borderRadius: 8, padding: '10px 12px', color: '#f9fafb', fontSize: 14, boxSizing: 'border-box' as const };
 const lbl = { display: 'block' as const, color: '#9ca3af', fontSize: 12, marginBottom: 6 };
 
-export default function NewSchoolPage({ token }: { token: string | null }) {
+export default function NewSchoolPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', domain: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'trial' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<any>(null);
 
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function provision(e: React.FormEvent) {
-    e.preventDefault(); setSaving(true); setError('');
+    e.preventDefault();
+    setSaving(true);
+    setError('');
     try {
-      const data = await apiFetch('/platform/schools', {
-        method: 'POST',
-        body: JSON.stringify(form),
-      }, token);
+      const { data } = await api.post('/platform/schools', form);
       setResult(data.data);
-    } catch (err: any) {
-      setError(err.error ?? 'Provisioning failed');
-    } finally { setSaving(false); }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'Provisioning failed';
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (result) return (

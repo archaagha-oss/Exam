@@ -1,6 +1,6 @@
 // apps/superadmin/src/pages/MigrationPage.tsx
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../App';
+import api from '../lib/api';
 
 const S = { padding: '32px' } as const;
 const card = { background: '#111827', border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' } as const;
@@ -10,13 +10,13 @@ interface SchoolStatus {
   status: 'migrated' | 'shared'; schemaName: string; migrateCommand: string;
 }
 
-export default function MigrationPage({ token }: { token: string | null }) {
+export default function MigrationPage() {
   const [statuses, setStatuses] = useState<SchoolStatus[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch('/platform/migration-status', {}, token).then(r => setStatuses(r.data));
-  }, [token]);
+    api.get('/platform/migration-status').then((r) => setStatuses(r.data.data));
+  }, []);
 
   function copy(text: string, id: string) {
     navigator.clipboard.writeText(text);

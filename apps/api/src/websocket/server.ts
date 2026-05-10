@@ -43,20 +43,22 @@ export function setupWebSocket(server: http.Server) {
     const sessionId = url.searchParams.get('sessionId') ?? undefined;
     const examId = url.searchParams.get('examId') ?? undefined;
 
-    // Token auth: prefer Sec-WebSocket-Protocol subprotocol header
-    // (NOT logged by proxies), fall back to ?token= for backward compat.
-    // Subprotocol format: "bearer.<jwt>"
+    // Token auth: ONLY via Sec-WebSocket-Protocol "bearer.<jwt>" subprotocol.
+    // The ?token= query fallback was removed in cycle 1.1b (P1-2) — query
+    // params travel through every proxy access log on the path; subprotocol
+    // headers do not. Both clients (apps/student/ExamSessionPage,
+    // apps/teacher/useProctor) were migrated in the same cycle.
     const subprotoHeader = (req.headers['sec-websocket-protocol'] as string | undefined) ?? '';
     const protoTokens = subprotoHeader
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    const subprotoToken = protoTokens.find((p) => p.startsWith('bearer.'))?.slice('bearer.'.length);
-    const queryToken = url.searchParams.get('token');
-    const token = subprotoToken || queryToken;
+    const token = protoTokens
+      .find((p) => p.startsWith('bearer.'))
+      ?.slice('bearer.'.length);
 
     if (!token) {
-      ws.close(4001, 'Missing token');
+      ws.close(4001, 'Missing token (use bearer.<jwt> subprotocol)');
       return;
     }
 

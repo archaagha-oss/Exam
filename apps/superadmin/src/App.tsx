@@ -1,31 +1,19 @@
 // apps/superadmin/src/App.tsx
 import { Routes, Route, Navigate, Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuthStore } from './store/authStore';
+import api from './lib/api';
 
-// ── Auth store (minimal, inline) ──────────────────────────
-const AuthCtx = createContext<{ token: string | null; setToken: (t: string | null) => void }>({ token: null, setToken: () => {} });
-function useAuth() { return useContext(AuthCtx); }
+import OverviewPage from './pages/OverviewPage';
+import SchoolsPage from './pages/SchoolsPage';
+import SchoolDetailPage from './pages/SchoolDetailPage';
+import MigrationPage from './pages/MigrationPage';
+import NewSchoolPage from './pages/NewSchoolPage';
 
-// ── API client ────────────────────────────────────────────
-const BASE = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:4000/api/v1';
-
-async function apiFetch(path: string, opts: RequestInit = {}, token?: string | null) {
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...((opts.headers as any) ?? {}),
-    },
-  });
-  if (!res.ok) throw await res.json();
-  return res.json();
-}
-
-// ── Pages ─────────────────────────────────────────────────
+// ── Login ─────────────────────────────────────────────────
 
 function LoginPage() {
-  const { setToken } = useAuth();
+  const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,15 +21,27 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   async function login(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true); setError('');
+    e.preventDefault();
+    setLoading(true);
+    setError('');
     try {
-      const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-      if (data.data.user.role !== 'SUPER_ADMIN') { setError('Super admin access required.'); return; }
-      setToken(data.data.accessToken);
+      const { data } = await api.post('/auth/login', { email, password });
+      const user = data?.data?.user;
+      const token = data?.data?.accessToken;
+      if (user?.role !== 'SUPER_ADMIN') {
+        setError('Super admin access required.');
+        return;
+      }
+      setAuth(token, user);
       navigate('/');
-    } catch (err: any) {
-      setError(err.error ?? 'Login failed');
-    } finally { setLoading(false); }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'Login failed';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -55,12 +55,12 @@ function LoginPage() {
         <form onSubmit={login}>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', color: '#9ca3af', fontSize: 12, marginBottom: 6 }}>Email</label>
-            <input value={email} onChange={e => setEmail(e.target.value)} type="email" required
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required
               style={{ width: '100%', background: '#1f2937', border: '1px solid #374151', borderRadius: 8, padding: '10px 12px', color: '#f9fafb', fontSize: 14, boxSizing: 'border-box' }} />
           </div>
           <div style={{ marginBottom: 24 }}>
             <label style={{ display: 'block', color: '#9ca3af', fontSize: 12, marginBottom: 6 }}>Password</label>
-            <input value={password} onChange={e => setPassword(e.target.value)} type="password" required
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required
               style={{ width: '100%', background: '#1f2937', border: '1px solid #374151', borderRadius: 8, padding: '10px 12px', color: '#f9fafb', fontSize: 14, boxSizing: 'border-box' }} />
           </div>
           {error && <p style={{ color: '#f87171', fontSize: 13, marginBottom: 16, textAlign: 'center' }}>{error}</p>}
@@ -74,11 +74,7 @@ function LoginPage() {
   );
 }
 
-import OverviewPage from './pages/OverviewPage';
-import SchoolsPage from './pages/SchoolsPage';
-import SchoolDetailPage from './pages/SchoolDetailPage';
-import MigrationPage from './pages/MigrationPage';
-import NewSchoolPage from './pages/NewSchoolPage';
+// ── Layout ────────────────────────────────────────────────
 
 const NAV = [
   { to: '/',          label: 'Overview',   icon: '📊', end: true  },
@@ -87,12 +83,21 @@ const NAV = [
 ];
 
 function Layout() {
-  const { token, setToken } = useAuth();
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const navigate = useNavigate();
+
+  async function signOut() {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // best-effort — clear locally regardless
+    }
+    clearAuth();
+    navigate('/login');
+  }
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: '#030712', color: '#f9fafb', fontFamily: 'system-ui, sans-serif' }}>
-      {/* Sidebar */}
       <aside style={{ width: 220, flexShrink: 0, background: '#0d1117', borderRight: '1px solid #1f2937', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #1f2937' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
@@ -103,7 +108,7 @@ function Layout() {
         </div>
 
         <nav style={{ flex: 1, padding: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV.map(item => (
+          {NAV.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end}
               style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8,
@@ -118,7 +123,7 @@ function Layout() {
 
         <div style={{ padding: 16, borderTop: '1px solid #1f2937' }}>
           <p style={{ color: '#4b5563', fontSize: 11, margin: '0 0 8px' }}>Super Admin</p>
-          <button onClick={() => { setToken(null); navigate('/login'); }}
+          <button onClick={signOut}
             style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: 0 }}>
             Sign out →
           </button>
@@ -132,31 +137,59 @@ function Layout() {
   );
 }
 
-// ── Auth provider + routing ───────────────────────────────
-export default function App() {
-  const [token, setTokenState] = useState<string | null>(() => localStorage.getItem('sa_token'));
+// ── Root ──────────────────────────────────────────────────
 
-  function setToken(t: string | null) {
-    setTokenState(t);
-    if (t) localStorage.setItem('sa_token', t);
-    else localStorage.removeItem('sa_token');
+export default function App() {
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const setAuth = useAuthStore((s) => s.setAuth);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
+  const [restoring, setRestoring] = useState(true);
+
+  // On first load, attempt a silent refresh against the httpOnly cookie. If
+  // it succeeds, we're back in. If it fails, the user lands on /login.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.post('/auth/refresh');
+        const token = data?.data?.accessToken;
+        const user = data?.data?.user;
+        if (!cancelled && token && user && user.role === 'SUPER_ADMIN') {
+          setAuth(token, user);
+        } else if (!cancelled) {
+          clearAuth();
+        }
+      } catch {
+        if (!cancelled) clearAuth();
+      } finally {
+        if (!cancelled) setRestoring(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (restoring) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#030712', color: '#6b7280', fontFamily: 'system-ui, sans-serif', fontSize: 13 }}>
+        Restoring session…
+      </div>
+    );
   }
 
   return (
-    <AuthCtx.Provider value={{ token, setToken }}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={token ? <Layout /> : <Navigate to="/login" replace />}>
-          <Route index element={<OverviewPage token={token} />} />
-          <Route path="schools" element={<SchoolsPage token={token} />} />
-          <Route path="schools/new" element={<NewSchoolPage token={token} />} />
-          <Route path="schools/:id" element={<SchoolDetailPage token={token} />} />
-          <Route path="migration" element={<MigrationPage token={token} />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AuthCtx.Provider>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={accessToken ? <Layout /> : <Navigate to="/login" replace />}>
+        <Route index element={<OverviewPage />} />
+        <Route path="schools" element={<SchoolsPage />} />
+        <Route path="schools/new" element={<NewSchoolPage />} />
+        <Route path="schools/:id" element={<SchoolDetailPage />} />
+        <Route path="migration" element={<MigrationPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
-
-export { apiFetch };

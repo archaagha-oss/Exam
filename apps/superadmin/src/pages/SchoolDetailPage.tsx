@@ -1,12 +1,12 @@
 // apps/superadmin/src/pages/SchoolDetailPage.tsx
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { apiFetch } from '../App';
+import api from '../lib/api';
 
 const S = { padding: '32px', maxWidth: 640 } as const;
 const card = { background: '#111827', border: '1px solid #1f2937', borderRadius: 12, padding: 20, marginBottom: 16 } as const;
 
-export default function SchoolDetailPage({ token }: { token: string | null }) {
+export default function SchoolDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [school, setSchool] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
@@ -14,17 +14,26 @@ export default function SchoolDetailPage({ token }: { token: string | null }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch(`/platform/schools/${id}`, {}, token).then(r => setSchool(r.data));
-  }, [id, token]);
+    api.get(`/platform/schools/${id}`).then((r) => setSchool(r.data.data));
+  }, [id]);
 
   async function deleteSchool() {
-    if (confirmName !== school?.name) { setError('Name does not match'); return; }
+    if (confirmName !== school?.name) {
+      setError('Name does not match');
+      return;
+    }
     if (!confirm(`PERMANENTLY delete "${school.name}" and all their data?`)) return;
     setDeleting(true);
     try {
-      await apiFetch(`/platform/schools/${id}`, { method: 'DELETE', body: JSON.stringify({ confirmName }) }, token);
+      await api.delete(`/platform/schools/${id}`, { data: { confirmName } });
       window.location.href = '/schools';
-    } catch (err: any) { setError(err.error ?? 'Delete failed'); setDeleting(false); }
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        'Delete failed';
+      setError(msg);
+      setDeleting(false);
+    }
   }
 
   if (!school) return <div style={{ ...S, color: '#6b7280' }}>Loading…</div>;
