@@ -337,11 +337,13 @@ and probably a different conversation about who's buying.
 - ✓ Postgres connection pool exposed via env (`apps/api/src/lib/prisma.ts`)
   so ops can tune for the multi-replica deploy without rebuilding.
 - ✓ WS broadcast abstraction landed (`apps/api/src/lib/wsBroadcast.ts`):
-  in-process implementation today, Redis pub/sub implementation lands in
-  cycle 3.0b once the abstraction is in production for a release cycle.
+  in-process implementation (cycle 3.0a) + `RedisPubSubBroadcaster`
+  (cycle 3.0b). Factory picks based on `WS_BROADCASTER` env. Default
+  stays in-process; production deploy sets `WS_BROADCASTER=redis-pubsub`
+  + `REDIS_URL` and bumps `API_REPLICAS`.
 - ✓ Load-test scaffolding (`scripts/load-test/`) targets 5k concurrent
   WS + 10k req/s of HTTP autosave so we can negotiate with numbers.
-- 〇 Redis pub/sub WS fan-out itself (cycle 3.0b — own cycle).
+- ✓ Redis pub/sub WS fan-out (cycle 3.0b).
 - 〇 HTTP autosave path becomes authoritative; WS `session:answer`
   becomes optimistic-only (cycle 3.0c).
 - 〇 Postgres read-replica wiring (deferred — D7 Option 2 doesn't need
