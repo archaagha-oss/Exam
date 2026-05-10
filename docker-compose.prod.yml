@@ -32,6 +32,12 @@ services:
     networks:
       - internal
 
+  # API. Cycle 3.0b — D7: scale-out via `deploy.replicas`. Set
+  # API_REPLICAS env (default 1) to spin up multiple instances; each
+  # subscribes to the same Redis pub/sub channel, so a WS broadcast on
+  # one replica reaches sockets on the others. PRISMA_CONNECTION_LIMIT
+  # should be (postgres max_connections / API_REPLICAS) so the cluster
+  # doesn't crowd Postgres's pool cap.
   api:
     build:
       context: .
@@ -41,7 +47,9 @@ services:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PRISMA_CONNECTION_LIMIT: ${PRISMA_CONNECTION_LIMIT:-20}
       REDIS_URL: redis://redis:6379
+      WS_BROADCASTER: ${WS_BROADCASTER:-redis-pubsub}
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_EXPIRES_IN: 15m
@@ -63,6 +71,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    deploy:
+      replicas: ${API_REPLICAS:-1}
     networks:
       - internal
       - external
